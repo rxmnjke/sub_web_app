@@ -13,6 +13,11 @@ app.use("/admin-ui", express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = path.join(__dirname, "data", "clients.json");
+const SUB_FETCH_TIMEOUT_MS = Number(process.env.SUB_FETCH_TIMEOUT_MS || 8000);
+const SUB_CACHE_TTL_MS = Number(process.env.SUB_CACHE_TTL_MS || 120000); // 120 sec
+
+// in-memory cache: key=url, value={ expiresAt:number, text:string }
+const subCache = new Map();
 
 function ensureDataFile() {
   const dir = path.dirname(DATA_FILE);
@@ -215,10 +220,72 @@ function buildSubscriptionFromLinks(links = [], opts = {}) {
   };
 }
 
+function tryBase64Decode(s) {
+  try {
+    const cleaned = String(s || "").replace(/\s+/g, "");
+    const pad = "=".repeat((4 - (cleaned.length % 4)) % 4);
+    return Buffer.from(cleaned + pad, "base64").toString("utf8");
+  } catch {
+    return String(s || "");
+  }
+}
+
+function extractVlessLinks(raw) {
+  const text = raw.includes("vless://") ? raw : tryBase64Decode(raw);
+  return text
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter((x) => x.startsWith("vless://"));
+}
+
+async function fetchTextWithCache(url, timeoutMs = SUB_FETCH_TIMEOUT_MS) {
+  const now = Date.now();
+  const hit = subCache.get(url);
+  if (hit && hit.expiresAt > now) return hit.text;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { signal: controller.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text = await r.text();
+    subCache.set(url, { text, expiresAt: now + SUB_CACHE_TTL_MS });
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function collectLinksFromSubs(urls = []) {
+  const uniqueUrls = [...new Set(urls.map((u) => String(u).trim()).filter(Boolean))];
+  if (uniqueUrls.length === 0) return { links: [], stats: [] };
+
+  const settled = await Promise.allSettled(
+    uniqueUrls.map(async (url) => {
+      const txt = await fetchTextWithCache(url);
+      const links = extractVlessLinks(txt);
+      return { url, linksCount: links.length, links };
+    })
+  );
+
+  const all = [];
+  const stats = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled") {
+      all.push(...r.value.links);
+      stats.push({ url: r.value.url, ok: true, linksCount: r.value.linksCount });
+    } else {
+      stats.push({ url: "unknown", ok: false, error: String(r.reason?.message || r.reason || "fetch failed") });
+    }
+  }
+
+  return { links: [...new Set(all)], stats };
+}
+
 // Health
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// Admin API (защищается nginx basic auth)
+// Admin API (auth should be done in nginx via Basic Auth)
 app.post("/admin/clients", (req, res) => {
   const { name } = req.body || {};
   if (!name) return res.status(400).json({ error: "name is required" });
@@ -234,6 +301,7 @@ app.post("/admin/clients", (req, res) => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     links: [],
+    sourceSubs: [],
     customJson: null
   };
 
@@ -284,10 +352,37 @@ app.post("/admin/clients/:id/import", (req, res) => {
   }
 
   client.links = replace ? clean : [...client.links, ...clean];
+  client.links = [...new Set(client.links)];
   client.updatedAt = new Date().toISOString();
 
   writeDb(db);
   res.json({ ok: true, totalLinks: client.links.length, mode: "links" });
+});
+
+app.post("/admin/clients/:id/source-subs", (req, res) => {
+  const { urls = [], replace = true } = req.body || {};
+  if (!Array.isArray(urls)) return res.status(400).json({ error: "urls must be array" });
+
+  const clean = urls.map((x) => String(x).trim()).filter(Boolean);
+  for (const u of clean) {
+    try {
+      const p = new URL(u);
+      if (!["http:", "https:"].includes(p.protocol)) throw new Error("bad protocol");
+    } catch {
+      return res.status(400).json({ error: `Invalid URL: ${u}` });
+    }
+  }
+
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  client.sourceSubs = replace ? clean : [...(client.sourceSubs || []), ...clean];
+  client.sourceSubs = [...new Set(client.sourceSubs)];
+  client.updatedAt = new Date().toISOString();
+
+  writeDb(db);
+  res.json({ ok: true, totalSourceSubs: client.sourceSubs.length });
 });
 
 app.post("/admin/clients/:id/custom-json", (req, res) => {
@@ -325,16 +420,40 @@ app.delete("/admin/clients/:id/custom-json", (req, res) => {
   res.json({ ok: true, mode: "links" });
 });
 
-// Subscription
-app.get("/sub/:token", (req, res) => {
+app.post("/admin/clients/:id/preview-merged-links", async (req, res) => {
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  const manual = client.links || [];
+  const fetched = await collectLinksFromSubs(client.sourceSubs || []);
+  const merged = [...new Set([...manual, ...fetched.links])];
+
+  res.json({
+    ok: true,
+    manualLinks: manual.length,
+    fetchedLinks: fetched.links.length,
+    totalMerged: merged.length,
+    fetchStats: fetched.stats
+  });
+});
+
+// Public subscription endpoint
+app.get("/sub/:token", async (req, res) => {
   const db = readDb();
   const client = db.clients.find((c) => c.token === req.params.token);
   if (!client) return res.status(404).json({ error: "Subscription not found" });
 
-  const result = client.customJson
-    ? client.customJson
-    : buildSubscriptionFromLinks(client.links, { remark: client.name });
+  if (client.customJson) {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res.send(JSON.stringify(client.customJson, null, 2));
+  }
 
+  const manual = client.links || [];
+  const fetched = await collectLinksFromSubs(client.sourceSubs || []);
+  const merged = [...new Set([...manual, ...fetched.links])];
+
+  const result = buildSubscriptionFromLinks(merged, { remark: client.name });
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.send(JSON.stringify(result, null, 2));
 });

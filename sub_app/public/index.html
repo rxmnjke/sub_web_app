@@ -47,7 +47,13 @@
       <button id="showClient">Показать клиента</button>
       <button id="deleteClient" class="danger">Удалить клиента</button>
     </div>
-
+     <h4>Source subscriptions (HTTP/HTTPS)</h4>
+	<p class="muted">Одна ссылка подписки на строку (3x-ui и т.п.)</p>
+	<textarea id="sourceSubs" placeholder="https://panel.example.com/sub/...."></textarea>
+	<div class="row">
+  	<label><input type="checkbox" id="replaceSourceSubs" checked /> replace (перезаписать)</label>
+  	<button id="saveSourceSubs">Сохранить source subs</button>
+	</div>
     <h4>Импорт VLESS ссылок</h4>
     <p class="muted">Одна ссылка на строку</p>
     <textarea id="vlessLinks" placeholder="vless://..."></textarea>

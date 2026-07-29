@@ -106,6 +106,7 @@ $("showClient").onclick = async () => {
 
   const c = await r.json();
   $("vlessLinks").value = (c.links || []).join("\n");
+  $("sourceSubs").value = (c.sourceSubs || []).join("\n");
   $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
   setMessage(`Клиент "${c.name}" загружен`);
 };
@@ -147,39 +148,42 @@ $("importLinks").onclick = async () => {
   await loadClients();
 };
 
-$("saveCustomJson").onclick = async () => {
+$("saveSourceSubs").onclick = async () => {
   const id = clientSelect.value;
   if (!id) return setMessage("Выберите клиента", false);
 
-  const raw = $("customJson").value.trim();
-  if (!raw) return setMessage("Вставьте JSON", false);
+  const urls = $("sourceSubs").value
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (e) {
-    return setMessage(`JSON невалиден: ${e.message}`, false);
-  }
+  const replace = $("replaceSourceSubs").checked;
 
-  const r = await api(`/admin/clients/${id}/custom-json`, {
+  const r = await api(`/admin/clients/${id}/source-subs`, {
     method: "POST",
-    body: JSON.stringify({ json: parsed, replace: true })
+    body: JSON.stringify({ urls, replace })
   });
-  if (!r.ok) return setMessage(`Ошибка сохранения JSON: ${await safeErr(r)}`, false);
 
-  setMessage("Custom JSON сохранен");
+  if (!r.ok) return setMessage(`Ошибка сохранения source subs: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  setMessage(`Source subs сохранены. Всего: ${j.totalSourceSubs}`);
   await loadClients();
 };
 
-$("deleteCustomJson").onclick = async () => {
+$("deleteClient").onclick = async () => {
   const id = clientSelect.value;
   if (!id) return setMessage("Выберите клиента", false);
 
-  const r = await api(`/admin/clients/${id}/custom-json`, { method: "DELETE" });
-  if (!r.ok) return setMessage(`Ошибка удаления custom JSON: ${await safeErr(r)}`, false);
+  if (!confirm("Удалить клиента? Это действие необратимо.")) return;
 
+  const r = await api(`/admin/clients/${id}`, { method: "DELETE" });
+  if (!r.ok) return setMessage(`Ошибка удаления клиента: ${await safeErr(r)}`, false);
+
+  $("vlessLinks").value = "";
+  $("sourceSubs").value = "";
   $("customJson").value = "";
-  setMessage("Custom JSON удален, режим links восстановлен");
+  setMessage("Клиент удален");
   await loadClients();
 };
 
