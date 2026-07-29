@@ -1,2 +1,6 @@
-# sub_web_app
-subscription panel for xray based reality tunnels
+###Панель для формирования подписок из vless ключей или json конфигов
+
+1. В .env файле прописать токен админа
+2. Получить через letsencrypt сертификаты для домена и положить их в папку certs
+3. Склонировать на VPS репозиторий
+4. Веб панель будет доступна по адресу https://domain-addr/admin-ui
