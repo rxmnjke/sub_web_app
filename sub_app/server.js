@@ -12,7 +12,6 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/admin-ui", express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "change_me";
 const DATA_FILE = path.join(__dirname, "data", "clients.json");
 
 function ensureDataFile() {
@@ -32,13 +31,6 @@ function writeDb(db) {
 }
 function randToken() {
   return crypto.randomBytes(24).toString("hex");
-}
-function adminAuth(req, res, next) {
-  const token = req.header("x-admin-token");
-  if (!token || token !== ADMIN_TOKEN) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
 }
 
 function decodeTag(hashPart = "") {
@@ -226,8 +218,8 @@ function buildSubscriptionFromLinks(links = [], opts = {}) {
 // Health
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// Admin API
-app.post("/admin/clients", adminAuth, (req, res) => {
+// Admin API (защищается nginx basic auth)
+app.post("/admin/clients", (req, res) => {
   const { name } = req.body || {};
   if (!name) return res.status(400).json({ error: "name is required" });
 
@@ -250,19 +242,19 @@ app.post("/admin/clients", adminAuth, (req, res) => {
   res.json(client);
 });
 
-app.get("/admin/clients", adminAuth, (req, res) => {
+app.get("/admin/clients", (req, res) => {
   const db = readDb();
   res.json(db.clients);
 });
 
-app.get("/admin/clients/:id", adminAuth, (req, res) => {
+app.get("/admin/clients/:id", (req, res) => {
   const db = readDb();
   const client = db.clients.find((c) => c.id === req.params.id);
   if (!client) return res.status(404).json({ error: "Client not found" });
   res.json(client);
 });
 
-app.delete("/admin/clients/:id", adminAuth, (req, res) => {
+app.delete("/admin/clients/:id", (req, res) => {
   const db = readDb();
   const idx = db.clients.findIndex((c) => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "Client not found" });
@@ -274,7 +266,7 @@ app.delete("/admin/clients/:id", adminAuth, (req, res) => {
   res.json({ ok: true, removed: { id: removed.id, name: removed.name } });
 });
 
-app.post("/admin/clients/:id/import", adminAuth, (req, res) => {
+app.post("/admin/clients/:id/import", (req, res) => {
   const { links, replace = false } = req.body || {};
   if (!Array.isArray(links)) {
     return res.status(400).json({ error: "links must be array of vless URLs" });
@@ -298,7 +290,7 @@ app.post("/admin/clients/:id/import", adminAuth, (req, res) => {
   res.json({ ok: true, totalLinks: client.links.length, mode: "links" });
 });
 
-app.post("/admin/clients/:id/custom-json", adminAuth, (req, res) => {
+app.post("/admin/clients/:id/custom-json", (req, res) => {
   const { json, replace = true } = req.body || {};
   if (!json) return res.status(400).json({ error: "json is required" });
 
@@ -321,7 +313,7 @@ app.post("/admin/clients/:id/custom-json", adminAuth, (req, res) => {
   res.json({ ok: true, mode: "customJson" });
 });
 
-app.delete("/admin/clients/:id/custom-json", adminAuth, (req, res) => {
+app.delete("/admin/clients/:id/custom-json", (req, res) => {
   const db = readDb();
   const client = db.clients.find((c) => c.id === req.params.id);
   if (!client) return res.status(404).json({ error: "Client not found" });
@@ -350,4 +342,3 @@ app.get("/sub/:token", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server started on :${PORT}`);
 });
-

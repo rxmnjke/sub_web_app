@@ -18,20 +18,18 @@
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border-bottom: 1px solid #eee; padding: 8px; vertical-align: top; text-align: left; }
     .small { font-size: 12px; }
+    .danger { background: #b00020; color: #fff; border: none; border-radius: 6px; }
   </style>
 </head>
 <body>
   <h1>VLESS Subscription Admin</h1>
-  <p class="muted">Токен нужен в заголовке <code>x-admin-token</code>.</p>
+  <p class="muted">Доступ защищен Basic Auth на уровне Nginx.</p>
 
   <div class="card">
-    <h3>1) Авторизация</h3>
+    <h3>1) Клиенты</h3>
     <div class="row">
-      <input id="token" class="w400" placeholder="ADMIN_TOKEN" />
-      <button id="saveToken">Сохранить токен</button>
       <button id="loadClients">Обновить список клиентов</button>
     </div>
-    <div id="authMsg" class="muted"></div>
   </div>
 
   <div class="card">
@@ -47,7 +45,7 @@
     <div class="row">
       <select id="clientSelect" class="w400"></select>
       <button id="showClient">Показать клиента</button>
-	<button id="deleteClient" style="background:#b00020;color:#fff;">Удалить клиента</button>
+      <button id="deleteClient" class="danger">Удалить клиента</button>
     </div>
 
     <h4>Импорт VLESS ссылок</h4>
@@ -67,7 +65,7 @@
   </div>
 
   <div class="card">
-    <h3>4) Клиенты</h3>
+    <h3>4) Список клиентов</h3>
     <div id="msg"></div>
     <table>
       <thead>
