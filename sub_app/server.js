@@ -252,7 +252,7 @@ function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}
   const parsed = [];
   const tagCount = new Map();
 
-  const pushParsed = (link, country) => {
+  const pushParsed = (link) => {
     try {
       const ob = parseVlessLink(link);
 
@@ -261,24 +261,17 @@ function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}
       tagCount.set(ob.tag, n);
       if (n > 1) ob.tag = `${ob.tag}-${n}`;
 
-      // country label on outbound
-      if (country && COUNTRY_LABELS[country]) {
-        ob.remarks = COUNTRY_LABELS[country];
-      }
-
       parsed.push(ob);
     } catch {
       // skip bad link
     }
   };
 
-  // 1) source subs grouped by country
-  for (const [country, links] of grouped.entries()) {
-    for (const link of links) pushParsed(link, country);
+  for (const links of grouped.values()) {
+    for (const link of links) pushParsed(link);
   }
 
-  // 2) manual links (without country label)
-  for (const link of manualLinks) pushParsed(link, null);
+  for (const link of manualLinks) pushParsed(link);
 
   const staticOutbounds = Array.isArray(template.outbounds)
     ? template.outbounds.filter((o) => !String(o?.tag || "").startsWith("vless-"))
@@ -480,21 +473,19 @@ app.get("/sub/:token", async (req, res) => {
     return res.send(JSON.stringify(client.customJson, null, 2));
   }
 
-  const manualLinks = client.links || [];
   const fetched = await collectLinksFromSubs(client.sourceSubs || []);
 
-  const countries = [...fetched.grouped.keys()];
-  const remarksByCountry = countries
-    .map((c) => COUNTRY_LABELS[c])
-    .filter(Boolean)
-    .join(", ");
-
-  const result = buildSubscriptionFromCountryGroups(fetched.grouped, manualLinks, {
-    remark: remarksByCountry || "Без страны"
-  });
+  const resultList = [];
+  for (const [country, links] of fetched.grouped.entries()) {
+    const oneCountryGrouped = new Map([[country, links]]);
+    const cfg = buildSubscriptionFromCountryGroups(oneCountryGrouped, [], {
+      remark: COUNTRY_LABELS[country] || country
+    });
+    resultList.push(cfg);
+  }
 
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.send(JSON.stringify(result, null, 2));
+  res.send(JSON.stringify(resultList, null, 2));
 });
 
 app.listen(PORT, () => {
