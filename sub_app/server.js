@@ -483,8 +483,14 @@ app.get("/sub/:token", async (req, res) => {
   const manualLinks = client.links || [];
   const fetched = await collectLinksFromSubs(client.sourceSubs || []);
 
+  const countries = [...fetched.grouped.keys()];
+  const remarksByCountry = countries
+    .map((c) => COUNTRY_LABELS[c])
+    .filter(Boolean)
+    .join(", ");
+
   const result = buildSubscriptionFromCountryGroups(fetched.grouped, manualLinks, {
-    remark: client.name
+    remark: remarksByCountry || "Без страны"
   });
 
   res.setHeader("Content-Type", "application/json; charset=utf-8");
