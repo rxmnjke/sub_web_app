@@ -110,6 +110,19 @@
         ],
         "outboundTag": "direct"
       },
+      {
+        "type": "field",
+        "ip": [
+          "5.45.192.0/18",
+          "5.255.192.0/18",
+          "77.88.0.0/18",
+          "87.250.224.0/19",
+          "93.158.128.0/18",
+          "95.108.128.0/17",
+          "213.180.192.0/19"
+        ],
+        "outboundTag": "direct"
+      },
       { "type": "field", "inboundTag": ["lo-in-1"], "balancerTag": "tier1" },
       { "type": "field", "inboundTag": ["lo-in-2"], "balancerTag": "tier2" },
       { "type": "field", "network": "tcp,udp", "balancerTag": "primary" }
