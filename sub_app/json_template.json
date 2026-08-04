@@ -1,0 +1,81 @@
+{
+  "remarks": "",
+  "log": { "loglevel": "warning" },
+  "dns": {
+    "servers": [
+      {
+        "address": "https+local://77.88.8.8/dns-query",
+        "domains": ["regexp:.*\\.ru$", "regexp:.*\\.su$"],
+        "queryStrategy": "UseIPv4"
+      },
+      { "address": "https+local://1.1.1.1/dns-query", "queryStrategy": "UseIPv4" }
+    ],
+    "queryStrategy": "UseIPv4"
+  },
+  "inbounds": [
+    {
+      "tag": "socks",
+      "port": 10808,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "settings": { "udp": true, "auth": "noauth" },
+      "sniffing": { "enabled": true, "routeOnly": true, "destOverride": ["http", "tls", "quic"] }
+    },
+    {
+      "tag": "http",
+      "port": 10809,
+      "listen": "127.0.0.1",
+      "protocol": "http",
+      "settings": { "allowTransparent": false },
+      "sniffing": { "enabled": true, "routeOnly": true, "destOverride": ["http", "tls", "quic"] }
+    },
+    {
+      "tag": "lo-in-1",
+      "listen": "127.0.0.1",
+      "port": 0,
+      "protocol": "dokodemo-door",
+      "settings": { "address": "127.0.0.1", "network": "tcp,udp" }
+    },
+    {
+      "tag": "lo-in-2",
+      "listen": "127.0.0.1",
+      "port": 0,
+      "protocol": "dokodemo-door",
+      "settings": { "address": "127.0.0.1", "network": "tcp,udp" }
+    }
+  ],
+  "outbounds": [
+    { "tag": "lo-out-1", "protocol": "loopback", "settings": { "inboundTag": "lo-in-1" } },
+    { "tag": "lo-out-2", "protocol": "loopback", "settings": { "inboundTag": "lo-in-2" } },
+    { "tag": "direct", "protocol": "freedom" },
+    { "tag": "block", "protocol": "blackhole" }
+  ],
+  "burstObservatory": {
+    "subjectSelector": [],
+    "pingConfig": {
+      "destination": "https://connectivitycheck.gstatic.com/generate_204",
+      "connectivity": "https://connectivitycheck.gstatic.com/generate_204",
+      "interval": "71s",
+      "sampling": 3,
+      "timeout": "10s",
+      "httpMethod": "GET"
+    }
+  },
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "balancers": [
+      { "tag": "primary", "selector": [], "strategy": { "type": "leastPing" }, "fallbackTag": "lo-out-1" },
+      { "tag": "tier1", "selector": [], "strategy": { "type": "random" }, "fallbackTag": "lo-out-2" },
+      { "tag": "tier2", "selector": [], "strategy": { "type": "random" } }
+    ],
+    "rules": [
+      { "type": "field", "network": "udp", "port": "443", "outboundTag": "block" },
+      { "type": "field", "protocol": ["bittorrent"], "outboundTag": "block" },
+      { "type": "field", "ip": ["127.0.0.0/8","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","169.254.0.0/16","::1/128","fc00::/7","fe80::/10"], "outboundTag": "direct" },
+      { "type": "field", "domain": ["localhost","*.local","*.localdomain","*.lan","*.internal"], "outboundTag": "direct" },
+      { "type": "field", "inboundTag": ["lo-in-1"], "balancerTag": "tier1" },
+      { "type": "field", "inboundTag": ["lo-in-2"], "balancerTag": "tier2" },
+      { "type": "field", "network": "tcp,udp", "balancerTag": "primary" }
+    ]
+  }
+}

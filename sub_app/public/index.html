@@ -5,20 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VLESS Admin</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; max-width: 1100px; }
+    body { font-family: Arial, sans-serif; margin: 24px; max-width: 1200px; }
     h1 { margin-bottom: 8px; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
     .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
     input, textarea, button, select { font: inherit; padding: 8px; }
     textarea { width: 100%; min-height: 120px; }
     .w400 { width: 400px; max-width: 100%; }
+    .w520 { width: 520px; max-width: 100%; }
     .muted { color: #666; font-size: 13px; }
     .ok { color: #0a7a2f; }
     .err { color: #b00020; white-space: pre-wrap; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border-bottom: 1px solid #eee; padding: 8px; vertical-align: top; text-align: left; }
-    .small { font-size: 12px; }
+    .small { font-size: 12px; word-break: break-all; }
     .danger { background: #b00020; color: #fff; border: none; border-radius: 6px; }
+    .sub-grid { display: grid; grid-template-columns: 1fr 180px; gap: 10px; margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -35,7 +37,7 @@
   <div class="card">
     <h3>2) Создать клиента</h3>
     <div class="row">
-      <input id="newClientName" class="w400" placeholder="Имя клиента" />
+      <input id="newClientName" class="w400" placeholder="Имя клиента (например 🇩🇪 Германия)" />
       <button id="createClient">Создать</button>
     </div>
   </div>
@@ -43,23 +45,58 @@
   <div class="card">
     <h3>3) Действия по клиенту</h3>
     <div class="row">
-      <select id="clientSelect" class="w400"></select>
+      <select id="clientSelect" class="w520"></select>
       <button id="showClient">Показать клиента</button>
       <button id="deleteClient" class="danger">Удалить клиента</button>
     </div>
-     <h4>Source subscriptions (HTTP/HTTPS)</h4>
-	<p class="muted">Одна ссылка подписки на строку (3x-ui и т.п.)</p>
-	<textarea id="sourceSubs" placeholder="https://panel.example.com/sub/...."></textarea>
-	<div class="row">
-  	<label><input type="checkbox" id="replaceSourceSubs" checked /> replace (перезаписать)</label>
-  	<button id="saveSourceSubs">Сохранить source subs</button>
-	</div>
-    <h4>Импорт VLESS ссылок</h4>
+
+    <h4>Импорт VLESS ссылок (ручные)</h4>
     <p class="muted">Одна ссылка на строку</p>
     <textarea id="vlessLinks" placeholder="vless://..."></textarea>
     <div class="row">
       <label><input type="checkbox" id="replaceLinks" checked /> replace (перезаписать)</label>
       <button id="importLinks">Импортировать ссылки</button>
+    </div>
+
+    <h4>Source subscriptions (HTTP/HTTPS) — 4 поля</h4>
+    <p class="muted">Можно заполнить 1, 2, 3 или все 4. У каждой ссылки выберите страну.</p>
+
+    <div class="sub-grid">
+      <input id="subUrl1" placeholder="https://panel.example.com/sub/..." />
+      <select id="subCountry1">
+        <option value="germany">Германия</option>
+        <option value="denmark">Дания</option>
+      </select>
+    </div>
+
+    <div class="sub-grid">
+      <input id="subUrl2" placeholder="https://panel.example.com/sub/..." />
+      <select id="subCountry2">
+        <option value="germany">Германия</option>
+        <option value="denmark">Дания</option>
+      </select>
+    </div>
+
+    <div class="sub-grid">
+      <input id="subUrl3" placeholder="https://panel.example.com/sub/..." />
+      <select id="subCountry3">
+        <option value="germany">Германия</option>
+        <option value="denmark">Дания</option>
+      </select>
+    </div>
+
+    <div class="sub-grid">
+      <input id="subUrl4" placeholder="https://panel.example.com/sub/..." />
+      <select id="subCountry4">
+        <option value="germany">Германия</option>
+        <option value="denmark">Дания</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label><input type="checkbox" id="replaceSourceSubs" checked /> replace (перезаписать)</label>
+      <button id="saveSourceSubs">Сохранить source subs</button>
+      <button id="previewMerged">Preview merged</button>
     </div>
 
     <h4>Custom JSON</h4>
@@ -81,6 +118,7 @@
           <th>Token</th>
           <th>Mode</th>
           <th>Links</th>
+          <th>SourceSubs</th>
           <th>Subscription URL</th>
         </tr>
       </thead>

@@ -55,7 +55,7 @@ function renderClients(clients) {
   clientsTbody.innerHTML = "";
   for (const c of clients) {
     const tr = document.createElement("tr");
-    const mode = c.customJson ? "customJson" : "links";
+    const mode = c.customJson ? "customJson" : "template";
     const subUrl = `${currentOrigin()}/sub/${c.token}`;
     tr.innerHTML = `
       <td>${escapeHtml(c.name || "")}</td>
@@ -63,9 +63,34 @@ function renderClients(clients) {
       <td class="small">${escapeHtml(c.token)}</td>
       <td>${mode}</td>
       <td>${Array.isArray(c.links) ? c.links.length : 0}</td>
+      <td>${Array.isArray(c.sourceSubs) ? c.sourceSubs.length : 0}</td>
       <td class="small"><a href="${subUrl}" target="_blank">${subUrl}</a></td>
     `;
     clientsTbody.appendChild(tr);
+  }
+}
+
+function getSourceSubItemsFromForm() {
+  const items = [];
+  for (let i = 1; i <= 4; i++) {
+    const url = $(`subUrl${i}`).value.trim();
+    const country = $(`subCountry${i}`).value;
+    if (!url) continue;
+    items.push({ url, country });
+  }
+  return items;
+}
+
+function setSourceSubItemsToForm(items = []) {
+  for (let i = 1; i <= 4; i++) {
+    $(`subUrl${i}`).value = "";
+    $(`subCountry${i}`).value = "germany";
+  }
+
+  for (let i = 0; i < Math.min(items.length, 4); i++) {
+    const row = items[i] || {};
+    $(`subUrl${i + 1}`).value = row.url || "";
+    $(`subCountry${i + 1}`).value = row.country || "germany";
   }
 }
 
@@ -106,7 +131,7 @@ $("showClient").onclick = async () => {
 
   const c = await r.json();
   $("vlessLinks").value = (c.links || []).join("\n");
-  $("sourceSubs").value = (c.sourceSubs || []).join("\n");
+  setSourceSubItemsToForm(c.sourceSubs || []);
   $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
   setMessage(`Клиент "${c.name}" загружен`);
 };
@@ -122,6 +147,7 @@ $("deleteClient").onclick = async () => {
 
   $("vlessLinks").value = "";
   $("customJson").value = "";
+  setSourceSubItemsToForm([]);
   setMessage("Клиент удален");
   await loadClients();
 };
@@ -144,7 +170,7 @@ $("importLinks").onclick = async () => {
   if (!r.ok) return setMessage(`Ошибка импорта: ${await safeErr(r)}`, false);
 
   const j = await r.json();
-  setMessage(`Импорт OK. Всего ссылок: ${j.totalLinks}`);
+  setMessage(`Импорт OK. Всего ручных ссылок: ${j.totalLinks}`);
   await loadClients();
 };
 
@@ -152,16 +178,12 @@ $("saveSourceSubs").onclick = async () => {
   const id = clientSelect.value;
   if (!id) return setMessage("Выберите клиента", false);
 
-  const urls = $("sourceSubs").value
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
+  const items = getSourceSubItemsFromForm();
   const replace = $("replaceSourceSubs").checked;
 
   const r = await api(`/admin/clients/${id}/source-subs`, {
     method: "POST",
-    body: JSON.stringify({ urls, replace })
+    body: JSON.stringify({ items, replace })
   });
 
   if (!r.ok) return setMessage(`Ошибка сохранения source subs: ${await safeErr(r)}`, false);
@@ -171,19 +193,52 @@ $("saveSourceSubs").onclick = async () => {
   await loadClients();
 };
 
-$("deleteClient").onclick = async () => {
+$("previewMerged").onclick = async () => {
   const id = clientSelect.value;
   if (!id) return setMessage("Выберите клиента", false);
 
-  if (!confirm("Удалить клиента? Это действие необратимо.")) return;
+  const r = await api(`/admin/clients/${id}/preview-merged-links`, { method: "POST" });
+  if (!r.ok) return setMessage(`Ошибка preview: ${await safeErr(r)}`, false);
 
-  const r = await api(`/admin/clients/${id}`, { method: "DELETE" });
-  if (!r.ok) return setMessage(`Ошибка удаления клиента: ${await safeErr(r)}`, false);
+  const j = await r.json();
+  setMessage(
+    `Preview: manual=${j.manualLinks}, fetched=${j.fetchedLinks}, total≈${j.totalMergedApprox}`
+  );
+};
 
-  $("vlessLinks").value = "";
-  $("sourceSubs").value = "";
+$("saveCustomJson").onclick = async () => {
+  const id = clientSelect.value;
+  if (!id) return setMessage("Выберите клиента", false);
+
+  const raw = $("customJson").value.trim();
+  if (!raw) return setMessage("Вставьте JSON", false);
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    return setMessage(`JSON невалиден: ${e.message}`, false);
+  }
+
+  const r = await api(`/admin/clients/${id}/custom-json`, {
+    method: "POST",
+    body: JSON.stringify({ json: parsed, replace: true })
+  });
+  if (!r.ok) return setMessage(`Ошибка сохранения JSON: ${await safeErr(r)}`, false);
+
+  setMessage("Custom JSON сохранен");
+  await loadClients();
+};
+
+$("deleteCustomJson").onclick = async () => {
+  const id = clientSelect.value;
+  if (!id) return setMessage("Выберите клиента", false);
+
+  const r = await api(`/admin/clients/${id}/custom-json`, { method: "DELETE" });
+  if (!r.ok) return setMessage(`Ошибка удаления custom JSON: ${await safeErr(r)}`, false);
+
   $("customJson").value = "";
-  setMessage("Клиент удален");
+  setMessage("Custom JSON удален, режим template восстановлен");
   await loadClients();
 };
 

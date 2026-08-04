@@ -13,11 +13,44 @@ app.use("/admin-ui", express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = path.join(__dirname, "data", "clients.json");
+const JSON_TEMPLATE_FILE = path.join(__dirname, "json_template.json");
 const SUB_FETCH_TIMEOUT_MS = Number(process.env.SUB_FETCH_TIMEOUT_MS || 8000);
 const SUB_CACHE_TTL_MS = Number(process.env.SUB_CACHE_TTL_MS || 120000); // 120 sec
 
 // in-memory cache: key=url, value={ expiresAt:number, text:string }
 const subCache = new Map();
+
+// helper
+const COUNTRY_LABELS = {
+  germany: "🇩🇪 Германия",
+  denmark: "🇩🇰 Дания"
+};
+
+function normalizeSourceSubs(items = []) {
+  const out = [];
+  for (const it of items) {
+    const url = String(it?.url || "").trim();
+    const country = String(it?.country || "").trim().toLowerCase();
+    if (!url) continue;
+    if (!["germany", "denmark"].includes(country)) continue;
+    try {
+      const p = new URL(url);
+      if (!["http:", "https:"].includes(p.protocol)) continue;
+      out.push({ url, country });
+    } catch {
+      // skip invalid
+    }
+  }
+
+  // dedup by url+country
+  const seen = new Set();
+  return out.filter((x) => {
+    const k = `${x.country}|${x.url}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
 
 function ensureDataFile() {
   const dir = path.dirname(DATA_FILE);
@@ -37,13 +70,12 @@ function writeDb(db) {
 function randToken() {
   return crypto.randomBytes(24).toString("hex");
 }
-
-function decodeTag(hashPart = "") {
-  try {
-    return decodeURIComponent(hashPart);
-  } catch {
-    return hashPart;
-  }
+function deepClone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+function loadJsonTemplate() {
+  const raw = fs.readFileSync(JSON_TEMPLATE_FILE, "utf-8");
+  return JSON.parse(raw);
 }
 
 function parseVlessLink(link, index = 0) {
@@ -55,7 +87,7 @@ function parseVlessLink(link, index = 0) {
   const port = Number(u.port || 443);
   const q = u.searchParams;
 
-  const type = q.get("type") || "tcp";
+  const type = (q.get("type") || "tcp").toLowerCase();
   const security = q.get("security") || "none";
   const flow = q.get("flow") || undefined;
   const sni = q.get("sni") || q.get("serverName") || undefined;
@@ -69,11 +101,8 @@ function parseVlessLink(link, index = 0) {
   const wsHost = q.get("host") || undefined;
   const serviceName = q.get("serviceName") || undefined;
 
-  const tagRaw = u.hash ? u.hash.slice(1) : "";
-  const tag = decodeTag(tagRaw) || `node-${index + 1}`;
-
   const outbound = {
-    tag,
+    tag: `vless-${type}`,
     protocol: "vless",
     settings: {
       vnext: [
@@ -106,11 +135,12 @@ function parseVlessLink(link, index = 0) {
 
   if (security === "reality") {
     outbound.streamSettings.realitySettings = {
-      ...(sni ? { serverName: sni } : {}),
-      ...(fp ? { fingerprint: fp } : {}),
+      show: false,
       ...(pbk ? { publicKey: pbk } : {}),
       ...(sid ? { shortId: sid } : {}),
-      ...(spx ? { spiderX: spx } : {})
+      ...(spx ? { spiderX: spx } : {}),
+      ...(sni ? { serverName: sni } : {}),
+      ...(fp ? { fingerprint: fp } : {})
     };
   }
 
@@ -129,95 +159,16 @@ function parseVlessLink(link, index = 0) {
     };
   }
 
+  if (type === "xhttp") {
+    outbound.streamSettings.xhttpSettings = {
+      path: wsPath || "/",
+      mode: "auto",
+      xPaddingBytes: "100-1000",
+      scMaxEachPostBytes: 1000000
+    };
+  }
+
   return outbound;
-}
-
-function buildSubscriptionFromLinks(links = [], opts = {}) {
-  const outbounds = [];
-  for (let i = 0; i < links.length; i++) {
-    const link = String(links[i] || "").trim();
-    if (!link) continue;
-    try {
-      outbounds.push(parseVlessLink(link, i));
-    } catch {
-      // skip invalid link
-    }
-  }
-
-  outbounds.push({ tag: "direct", protocol: "freedom" });
-  outbounds.push({ tag: "block", protocol: "blackhole" });
-
-  const selectors = outbounds
-    .map((o) => o.tag)
-    .filter((t) => !["direct", "block"].includes(t));
-
-  const useBalancer = selectors.length > 1;
-  const hasProxy = selectors.length > 0;
-
-  const routingRules = [
-    {
-      type: "field",
-      domain: ["geosite:category-gov-ru", "geosite:ru"],
-      outboundTag: "direct"
-    },
-    {
-      type: "field",
-      ip: ["geoip:ru", "geoip:private"],
-      outboundTag: "direct"
-    }
-  ];
-
-  if (hasProxy) {
-    if (useBalancer) {
-      routingRules.push({
-        type: "field",
-        network: "tcp,udp",
-        balancerTag: "proxy-balance"
-      });
-    } else {
-      routingRules.push({
-        type: "field",
-        network: "tcp,udp",
-        outboundTag: selectors[0]
-      });
-    }
-  } else {
-    routingRules.push({
-      type: "field",
-      network: "tcp,udp",
-      outboundTag: "direct"
-    });
-  }
-
-  return {
-    log: { loglevel: "warning" },
-    inbounds: [
-      {
-        tag: "socks-in",
-        listen: "127.0.0.1",
-        port: 10808,
-        protocol: "socks",
-        settings: { udp: true }
-      }
-    ],
-    outbounds,
-    routing: {
-      domainStrategy: "AsIs",
-      rules: routingRules,
-      ...(useBalancer
-        ? {
-            balancers: [
-              {
-                tag: "proxy-balance",
-                selector: selectors,
-                strategy: { type: "leastPing" }
-              }
-            ]
-          }
-        : {})
-    },
-    ...(opts.remark ? { remarks: opts.remark } : {})
-  };
 }
 
 function tryBase64Decode(s) {
@@ -256,36 +207,120 @@ async function fetchTextWithCache(url, timeoutMs = SUB_FETCH_TIMEOUT_MS) {
   }
 }
 
-async function collectLinksFromSubs(urls = []) {
-  const uniqueUrls = [...new Set(urls.map((u) => String(u).trim()).filter(Boolean))];
-  if (uniqueUrls.length === 0) return { links: [], stats: [] };
+async function collectLinksFromSubs(items = []) {
+  const normalized = normalizeSourceSubs(items);
 
-  const settled = await Promise.allSettled(
-    uniqueUrls.map(async (url) => {
-      const txt = await fetchTextWithCache(url);
+  const tasks = normalized.map(async (it) => {
+    try {
+      const txt = await fetchTextWithCache(it.url);
       const links = extractVlessLinks(txt);
-      return { url, linksCount: links.length, links };
-    })
-  );
-
-  const all = [];
-  const stats = [];
-  for (const r of settled) {
-    if (r.status === "fulfilled") {
-      all.push(...r.value.links);
-      stats.push({ url: r.value.url, ok: true, linksCount: r.value.linksCount });
-    } else {
-      stats.push({ url: "unknown", ok: false, error: String(r.reason?.message || r.reason || "fetch failed") });
+      return { ok: true, url: it.url, country: it.country, links };
+    } catch (e) {
+      return {
+        ok: false,
+        url: it.url,
+        country: it.country,
+        error: String(e?.message || e || "fetch failed")
+      };
     }
+  });
+
+  const settled = await Promise.all(tasks);
+  const grouped = new Map(); // country -> links[]
+  const stats = [];
+
+  for (const r of settled) {
+    if (!r.ok) {
+      stats.push(r);
+      continue;
+    }
+    if (!grouped.has(r.country)) grouped.set(r.country, []);
+    grouped.get(r.country).push(...r.links);
+    stats.push({ url: r.url, country: r.country, ok: true, linksCount: r.links.length });
   }
 
-  return { links: [...new Set(all)], stats };
+  for (const [country, arr] of grouped.entries()) {
+    grouped.set(country, [...new Set(arr)]);
+  }
+
+  return { grouped, stats };
+}
+
+function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}) {
+  const template = deepClone(loadJsonTemplate());
+
+  const parsed = [];
+  const tagCount = new Map();
+
+  const pushParsed = (link, country) => {
+    try {
+      const ob = parseVlessLink(link);
+
+      // unique tag if duplicates by transport
+      const n = (tagCount.get(ob.tag) || 0) + 1;
+      tagCount.set(ob.tag, n);
+      if (n > 1) ob.tag = `${ob.tag}-${n}`;
+
+      // country label on outbound
+      if (country && COUNTRY_LABELS[country]) {
+        ob.remarks = COUNTRY_LABELS[country];
+      }
+
+      parsed.push(ob);
+    } catch {
+      // skip bad link
+    }
+  };
+
+  // 1) source subs grouped by country
+  for (const [country, links] of grouped.entries()) {
+    for (const link of links) pushParsed(link, country);
+  }
+
+  // 2) manual links (without country label)
+  for (const link of manualLinks) pushParsed(link, null);
+
+  const staticOutbounds = Array.isArray(template.outbounds)
+    ? template.outbounds.filter((o) => !String(o?.tag || "").startsWith("vless-"))
+    : [];
+
+  template.outbounds = [...parsed, ...staticOutbounds];
+
+  const vlessTags = parsed.map((o) => o.tag);
+
+  if (!template.burstObservatory) template.burstObservatory = {};
+  template.burstObservatory.subjectSelector = [...vlessTags];
+
+  if (!template.routing) template.routing = {};
+  if (!Array.isArray(template.routing.balancers)) template.routing.balancers = [];
+
+  const bPrimary = template.routing.balancers.find((b) => b.tag === "primary");
+  const bTier1 = template.routing.balancers.find((b) => b.tag === "tier1");
+  const bTier2 = template.routing.balancers.find((b) => b.tag === "tier2");
+
+  if (bPrimary) bPrimary.selector = [...vlessTags];
+
+  const grpcTags = vlessTags.filter((t) => t.startsWith("vless-grpc"));
+  const xhttpTags = vlessTags.filter((t) => t.startsWith("vless-xhttp"));
+
+  if (bTier1) bTier1.selector = grpcTags.length ? grpcTags : (vlessTags[0] ? [vlessTags[0]] : []);
+  if (bTier2) {
+    bTier2.selector = xhttpTags.length
+      ? xhttpTags
+      : (vlessTags[1] ? [vlessTags[1]] : (bTier1?.selector || []));
+  }
+
+  if (opts.remark) {
+    template.remarks = opts.remark;
+  }
+
+  return template;
 }
 
 // Health
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// Admin API (auth should be done in nginx via Basic Auth)
+// Admin API
 app.post("/admin/clients", (req, res) => {
   const { name } = req.body || {};
   if (!name) return res.status(400).json({ error: "name is required" });
@@ -301,7 +336,7 @@ app.post("/admin/clients", (req, res) => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     links: [],
-    sourceSubs: [],
+    sourceSubs: [], // [{ url, country }]
     customJson: null
   };
 
@@ -360,25 +395,19 @@ app.post("/admin/clients/:id/import", (req, res) => {
 });
 
 app.post("/admin/clients/:id/source-subs", (req, res) => {
-  const { urls = [], replace = true } = req.body || {};
-  if (!Array.isArray(urls)) return res.status(400).json({ error: "urls must be array" });
-
-  const clean = urls.map((x) => String(x).trim()).filter(Boolean);
-  for (const u of clean) {
-    try {
-      const p = new URL(u);
-      if (!["http:", "https:"].includes(p.protocol)) throw new Error("bad protocol");
-    } catch {
-      return res.status(400).json({ error: `Invalid URL: ${u}` });
-    }
+  const { items = [], replace = true } = req.body || {};
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ error: "items must be array of {url,country}" });
   }
+
+  const normalized = normalizeSourceSubs(items);
 
   const db = readDb();
   const client = db.clients.find((c) => c.id === req.params.id);
   if (!client) return res.status(404).json({ error: "Client not found" });
 
-  client.sourceSubs = replace ? clean : [...(client.sourceSubs || []), ...clean];
-  client.sourceSubs = [...new Set(client.sourceSubs)];
+  const current = Array.isArray(client.sourceSubs) ? client.sourceSubs : [];
+  client.sourceSubs = replace ? normalized : normalizeSourceSubs([...current, ...normalized]);
   client.updatedAt = new Date().toISOString();
 
   writeDb(db);
@@ -427,13 +456,15 @@ app.post("/admin/clients/:id/preview-merged-links", async (req, res) => {
 
   const manual = client.links || [];
   const fetched = await collectLinksFromSubs(client.sourceSubs || []);
-  const merged = [...new Set([...manual, ...fetched.links])];
+
+  let fetchedCount = 0;
+  for (const arr of fetched.grouped.values()) fetchedCount += arr.length;
 
   res.json({
     ok: true,
     manualLinks: manual.length,
-    fetchedLinks: fetched.links.length,
-    totalMerged: merged.length,
+    fetchedLinks: fetchedCount,
+    totalMergedApprox: manual.length + fetchedCount,
     fetchStats: fetched.stats
   });
 });
@@ -449,11 +480,13 @@ app.get("/sub/:token", async (req, res) => {
     return res.send(JSON.stringify(client.customJson, null, 2));
   }
 
-  const manual = client.links || [];
+  const manualLinks = client.links || [];
   const fetched = await collectLinksFromSubs(client.sourceSubs || []);
-  const merged = [...new Set([...manual, ...fetched.links])];
 
-  const result = buildSubscriptionFromLinks(merged, { remark: client.name });
+  const result = buildSubscriptionFromCountryGroups(fetched.grouped, manualLinks, {
+    remark: client.name
+  });
+
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.send(JSON.stringify(result, null, 2));
 });
