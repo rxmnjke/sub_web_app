@@ -23,7 +23,9 @@ const subCache = new Map();
 // helper
 const COUNTRY_LABELS = {
   germany: "🇩🇪 Германия",
-  denmark: "🇩🇰 Дания"
+  denmark: "🇩🇰 Дания",
+  denmark2: "🇩🇰 Дания 2",
+  netherlands: "🇳🇱 Нидерланды"
 };
 
 function normalizeSourceSubs(items = []) {
