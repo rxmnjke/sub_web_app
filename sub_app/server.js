@@ -34,7 +34,7 @@ function normalizeSourceSubs(items = []) {
     const url = String(it?.url || "").trim();
     const country = String(it?.country || "").trim().toLowerCase();
     if (!url) continue;
-    if (!["germany", "denmark"].includes(country)) continue;
+    if (!["germany", "denmark", "denmark2", "netherlands"].includes(country)) continue;
     try {
       const p = new URL(url);
       if (!["http:", "https:"].includes(p.protocol)) continue;
