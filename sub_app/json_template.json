@@ -106,7 +106,8 @@
           "domain:2gis.com",
           "domain:my.games",
           "domain:4pda.to",
-          "domain:avito.st"
+          "domain:avito.st",
+          "domain:emias.info"
         ],
         "outboundTag": "direct"
       },
