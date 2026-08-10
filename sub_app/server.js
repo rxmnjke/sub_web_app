@@ -17,6 +17,9 @@ const JSON_TEMPLATE_FILE = path.join(__dirname, "json_template.json");
 const SUB_FETCH_TIMEOUT_MS = Number(process.env.SUB_FETCH_TIMEOUT_MS || 8000);
 const SUB_CACHE_TTL_MS = Number(process.env.SUB_CACHE_TTL_MS || 120000); // 120 sec
 const SUB_UPDATE_INTERVAL_HOURS = Number(process.env.SUB_UPDATE_INTERVAL_HOURS || 2);
+const HWID_ENFORCE = String(process.env.HWID_ENFORCE || "true").toLowerCase() === "true";
+const HWID_MAX_DEVICES = Number(process.env.HWID_MAX_DEVICES || 2);
+const HWID_HEADER_NAME = String(process.env.HWID_HEADER_NAME || "x-hwid").toLowerCase();
 
 // in-memory cache: key=url, value={ expiresAt:number, text:string }
 const subCache = new Map();
@@ -193,6 +196,19 @@ function extractVlessLinks(raw) {
     .filter((x) => x.startsWith("vless://"));
 }
 
+function getRequestHwid(req) {
+  const fromHeader = String(req.get(HWID_HEADER_NAME) || "").trim();
+  const fromQueryHwid = String(req.query?.hwid || "").trim();
+  const fromQueryDeviceId = String(req.query?.device_id || "").trim();
+
+  return fromHeader || fromQueryHwid || fromQueryDeviceId || "";
+}
+
+function ensureClientDevices(client) {
+  if (!Array.isArray(client.devices)) client.devices = [];
+  return client.devices;
+}
+
 async function fetchTextWithCache(url, timeoutMs = SUB_FETCH_TIMEOUT_MS) {
   const now = Date.now();
   const hit = subCache.get(url);
@@ -334,6 +350,7 @@ app.post("/admin/clients", (req, res) => {
     updatedAt: new Date().toISOString(),
     links: [],
     sourceSubs: [], // [{ url, country }]
+    devices: [], // [{ hwid, firstSeenAt, lastSeenAt }]
     customJson: null
   };
 
@@ -473,6 +490,29 @@ app.get("/sub/:token", async (req, res) => {
   if (!client) return res.status(404).json({ error: "Subscription not found" });
 
   res.setHeader("Profile-Update-Interval", String(SUB_UPDATE_INTERVAL_HOURS));
+
+  const nowIso = new Date().toISOString();
+  const hwid = getRequestHwid(req);
+
+  if (hwid) {
+    const devices = ensureClientDevices(client);
+    const found = devices.find((d) => d.hwid === hwid);
+
+    if (found) {
+      found.lastSeenAt = nowIso;
+    } else {
+      if (HWID_ENFORCE && devices.length >= HWID_MAX_DEVICES) {
+        return res.status(403).json({
+          error: "Device limit exceeded",
+          maxDevices: HWID_MAX_DEVICES
+        });
+      }
+      devices.push({ hwid, firstSeenAt: nowIso, lastSeenAt: nowIso });
+    }
+
+    client.updatedAt = nowIso;
+    writeDb(db);
+  }
 
   if (client.customJson) {
     res.setHeader("Content-Type", "application/json; charset=utf-8");
