@@ -23,6 +23,7 @@ const subCache = new Map();
 // helper
 const COUNTRY_LABELS = {
   germany: "🇩🇪 Германия",
+  germany2: "🇩🇪 Германия 2",
   denmark: "🇩🇰 Дания",
   denmark2: "🇩🇰 Дания 2",
   netherlands: "🇳🇱 Нидерланды"
@@ -34,7 +35,7 @@ function normalizeSourceSubs(items = []) {
     const url = String(it?.url || "").trim();
     const country = String(it?.country || "").trim().toLowerCase();
     if (!url) continue;
-    if (!["germany", "denmark", "denmark2", "netherlands"].includes(country)) continue;
+    if (!["germany", "germany2", "denmark", "denmark2", "netherlands"].includes(country)) continue;
     try {
       const p = new URL(url);
       if (!["http:", "https:"].includes(p.protocol)) continue;
