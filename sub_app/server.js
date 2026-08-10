@@ -16,6 +16,7 @@ const DATA_FILE = path.join(__dirname, "data", "clients.json");
 const JSON_TEMPLATE_FILE = path.join(__dirname, "json_template.json");
 const SUB_FETCH_TIMEOUT_MS = Number(process.env.SUB_FETCH_TIMEOUT_MS || 8000);
 const SUB_CACHE_TTL_MS = Number(process.env.SUB_CACHE_TTL_MS || 120000); // 120 sec
+const SUB_UPDATE_INTERVAL_HOURS = Number(process.env.SUB_UPDATE_INTERVAL_HOURS || 2);
 
 // in-memory cache: key=url, value={ expiresAt:number, text:string }
 const subCache = new Map();
@@ -470,6 +471,8 @@ app.get("/sub/:token", async (req, res) => {
   const db = readDb();
   const client = db.clients.find((c) => c.token === req.params.token);
   if (!client) return res.status(404).json({ error: "Subscription not found" });
+
+  res.setHeader("Profile-Update-Interval", String(SUB_UPDATE_INTERVAL_HOURS));
 
   if (client.customJson) {
     res.setHeader("Content-Type", "application/json; charset=utf-8");
