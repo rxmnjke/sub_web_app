@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 const msg = $("msg");
 const clientsTbody = $("clientsTbody");
 const clientSelect = $("clientSelect");
+const MAX_SOURCE_SUBS = 5;
 
 function api(path, options = {}) {
   return fetch(path, {
@@ -72,7 +73,7 @@ function renderClients(clients) {
 
 function getSourceSubItemsFromForm() {
   const items = [];
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= MAX_SOURCE_SUBS; i++) {
     const url = $(`subUrl${i}`).value.trim();
     const country = $(`subCountry${i}`).value;
     if (!url) continue;
@@ -82,12 +83,12 @@ function getSourceSubItemsFromForm() {
 }
 
 function setSourceSubItemsToForm(items = []) {
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= MAX_SOURCE_SUBS; i++) {
     $(`subUrl${i}`).value = "";
     $(`subCountry${i}`).value = "germany";
   }
 
-  for (let i = 0; i < Math.min(items.length, 4); i++) {
+  for (let i = 0; i < Math.min(items.length, MAX_SOURCE_SUBS); i++) {
     const row = items[i] || {};
     $(`subUrl${i + 1}`).value = row.url || "";
     $(`subCountry${i + 1}`).value = row.country || "germany";
