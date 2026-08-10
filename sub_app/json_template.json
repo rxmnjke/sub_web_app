@@ -1,5 +1,6 @@
 {
   "remarks": "",
+  "updateIntervalHours": 2,
   "log": { "loglevel": "warning" },
   "dns": {
     "servers": [
