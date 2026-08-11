@@ -64,16 +64,81 @@ function ensureDataFile() {
   const dir = path.dirname(DATA_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify({ clients: [] }, null, 2));
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify(
+        {
+          clients: [],
+          settings: {
+            subscriptionInfo: {
+              announce: "",
+              supportUrl: ""
+            }
+          }
+        },
+        null,
+        2
+      )
+    );
   }
 }
 ensureDataFile();
 
+function normalizeSupportUrl(url) {
+  let supportUrl = String(url || "").trim();
+  if (!supportUrl) return "";
+
+  try {
+    const parsed = new URL(supportUrl);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    return supportUrl;
+  } catch {
+    return "";
+  }
+}
+
+function normalizeSubscriptionInfo(input = {}) {
+  const announce = String(input?.announce || "").trim();
+  const supportUrl = normalizeSupportUrl(input?.supportUrl);
+
+  return {
+    announce,
+    supportUrl
+  };
+}
+
+function toLegacyAdminBroadcast(subscriptionInfo = {}) {
+  const normalized = normalizeSubscriptionInfo(subscriptionInfo);
+  return {
+    message: normalized.announce,
+    linkUrl: normalized.supportUrl,
+    linkLabel: ""
+  };
+}
+
+function normalizeDbShape(rawDb = {}) {
+  const db = typeof rawDb === "object" && rawDb ? rawDb : {};
+  if (!Array.isArray(db.clients)) db.clients = [];
+  if (!db.settings || typeof db.settings !== "object") db.settings = {};
+
+  const legacy = db.settings.adminBroadcast || {};
+  const modern = db.settings.subscriptionInfo || {};
+
+  db.settings.subscriptionInfo = normalizeSubscriptionInfo({
+    announce: modern.announce || legacy.message,
+    supportUrl: modern.supportUrl || legacy.linkUrl
+  });
+  db.settings.adminBroadcast = toLegacyAdminBroadcast(db.settings.subscriptionInfo);
+
+  return db;
+}
+
 function readDb() {
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+  const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+  return normalizeDbShape(raw);
 }
 function writeDb(db) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+  fs.writeFileSync(DATA_FILE, JSON.stringify(normalizeDbShape(db), null, 2));
 }
 function randToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -486,6 +551,34 @@ function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}
   return template;
 }
 
+function resolveProfilePageUrl(req) {
+  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
+  const forwardedHost = String(req.get("x-forwarded-host") || "").split(",")[0].trim();
+  const proto = forwardedProto || req.protocol || "http";
+  const host = forwardedHost || String(req.get("host") || "");
+
+  if (!host) return "";
+  return `${proto}://${host}${req.originalUrl || req.url || ""}`;
+}
+
+function applySubscriptionHeaders(res, req, subscriptionInfo = {}) {
+  const normalized = normalizeSubscriptionInfo(subscriptionInfo);
+
+  if (normalized.announce) {
+    const encoded = Buffer.from(normalized.announce, "utf8").toString("base64");
+    res.setHeader("Announce", `base64:${encoded}`);
+  }
+
+  if (normalized.supportUrl) {
+    res.setHeader("Support-Url", normalized.supportUrl);
+  }
+
+  const profileUrl = resolveProfilePageUrl(req);
+  if (profileUrl) {
+    res.setHeader("Profile-Web-Page-Url", profileUrl);
+  }
+}
+
 // Health
 app.get("/health", (req, res) => res.json({ ok: true }));
 
@@ -525,6 +618,37 @@ app.get("/admin/clients/:id", (req, res) => {
   const client = db.clients.find((c) => c.id === req.params.id);
   if (!client) return res.status(404).json({ error: "Client not found" });
   res.json(client);
+});
+
+app.get("/admin/settings", (req, res) => {
+  const db = readDb();
+  const subscriptionInfo = normalizeSubscriptionInfo(db.settings?.subscriptionInfo);
+  res.json({ subscriptionInfo, adminBroadcast: toLegacyAdminBroadcast(subscriptionInfo) });
+});
+
+app.post("/admin/settings/subscription-info", (req, res) => {
+  const { announce = "", supportUrl = "" } = req.body || {};
+  const db = readDb();
+
+  db.settings.subscriptionInfo = normalizeSubscriptionInfo({ announce, supportUrl });
+  db.settings.adminBroadcast = toLegacyAdminBroadcast(db.settings.subscriptionInfo);
+  writeDb(db);
+
+  res.json({ ok: true, subscriptionInfo: db.settings.subscriptionInfo });
+});
+
+app.post("/admin/settings/admin-broadcast", (req, res) => {
+  const { message = "", linkUrl = "" } = req.body || {};
+  const db = readDb();
+
+  db.settings.subscriptionInfo = normalizeSubscriptionInfo({
+    announce: message,
+    supportUrl: linkUrl
+  });
+  db.settings.adminBroadcast = toLegacyAdminBroadcast(db.settings.subscriptionInfo);
+  writeDb(db);
+
+  res.json({ ok: true, adminBroadcast: db.settings.adminBroadcast, subscriptionInfo: db.settings.subscriptionInfo });
 });
 
 app.delete("/admin/clients/:id", (req, res) => {
@@ -663,9 +787,11 @@ app.get("/sub/:token", async (req, res) => {
   const db = readDb();
   const client = db.clients.find((c) => c.token === req.params.token);
   if (!client) return res.status(404).json({ error: "Subscription not found" });
+  const subscriptionInfo = normalizeSubscriptionInfo(db.settings?.subscriptionInfo);
 
   res.setHeader("Profile-Update-Interval", String(SUB_UPDATE_INTERVAL_HOURS));
   res.setHeader("Accept-CH", "Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version");
+  applySubscriptionHeaders(res, req, subscriptionInfo);
 
   const nowIso = new Date().toISOString();
   const hwid = getRequestHwid(req, res);

@@ -21,11 +21,29 @@
     .small { font-size: 12px; word-break: break-all; }
     .danger { background: #b00020; color: #fff; border: none; border-radius: 6px; }
     .sub-grid { display: grid; grid-template-columns: 1fr 180px; gap: 10px; margin-bottom: 10px; }
+    .broadcast-preview { margin-top: 10px; padding: 10px; border: 1px dashed #bbb; border-radius: 8px; }
+    .broadcast-preview .icon-link { margin-left: 6px; text-decoration: none; }
   </style>
 </head>
 <body>
   <h1>VLESS Subscription Admin</h1>
   <p class="muted">Доступ защищен Basic Auth на уровне Nginx.</p>
+
+  <div class="card">
+    <h3>0) Общее сообщение для клиентов</h3>
+    <p class="muted">Режим как в 3x-ui: сообщение уходит в заголовок Announce, ссылка в Support-Url.</p>
+    <div class="row">
+      <textarea id="adminBroadcastMessage" class="w520" placeholder="Announce: текст сообщения для всех клиентов"></textarea>
+    </div>
+    <div class="row">
+      <input id="adminBroadcastLinkUrl" class="w520" placeholder="Support-Url (необязательно): https://example.com/support" />
+    </div>
+    <div class="row">
+      <button id="saveAdminBroadcast">Сохранить сообщение</button>
+      <button id="loadAdminBroadcast">Загрузить сообщение</button>
+    </div>
+    <div id="adminBroadcastPreview" class="broadcast-preview muted">Сообщение пока не задано.</div>
+  </div>
 
   <div class="card">
     <h3>1) Клиенты</h3>

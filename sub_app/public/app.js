@@ -5,6 +5,10 @@ const clientsTbody = $("clientsTbody");
 const clientSelect = $("clientSelect");
 const MAX_SOURCE_SUBS = 5;
 
+const adminBroadcastMessage = $("adminBroadcastMessage");
+const adminBroadcastLinkUrl = $("adminBroadcastLinkUrl");
+const adminBroadcastPreview = $("adminBroadcastPreview");
+
 function api(path, options = {}) {
   return fetch(path, {
     ...options,
@@ -50,6 +54,37 @@ function fillSelect(clients) {
     opt.textContent = `${c.name} (${c.id})`;
     clientSelect.appendChild(opt);
   }
+}
+
+function renderAdminBroadcastPreview(payload = {}) {
+  const message = String(payload?.announce || payload?.message || "").trim();
+  const linkUrl = String(payload?.supportUrl || payload?.linkUrl || "").trim();
+
+  if (!message) {
+    adminBroadcastPreview.className = "broadcast-preview muted";
+    adminBroadcastPreview.textContent = "Сообщение пока не задано.";
+    return;
+  }
+
+  adminBroadcastPreview.className = "broadcast-preview";
+  const safeMessage = escapeHtml(message);
+  const safeLinkUrl = escapeHtml(linkUrl);
+
+  adminBroadcastPreview.innerHTML = linkUrl
+    ? `${safeMessage} <a class="icon-link" href="${safeLinkUrl}" target="_blank" rel="noopener noreferrer" title="Support">&#128279;</a>`
+    : safeMessage;
+}
+
+async function loadAdminBroadcastSettings() {
+  const r = await api("/admin/settings");
+  if (!r.ok) return setMessage(`Ошибка загрузки сообщения: ${await safeErr(r)}`, false);
+
+  const data = await r.json();
+  const payload = data?.subscriptionInfo || data?.adminBroadcast || {};
+
+  adminBroadcastMessage.value = payload.announce || payload.message || "";
+  adminBroadcastLinkUrl.value = payload.supportUrl || payload.linkUrl || "";
+  renderAdminBroadcastPreview(payload);
 }
 
 function renderClients(clients) {
@@ -107,6 +142,28 @@ async function loadClients() {
 }
 
 $("loadClients").onclick = loadClients;
+
+$("loadAdminBroadcast").onclick = async () => {
+  await loadAdminBroadcastSettings();
+  setMessage("Общее сообщение загружено");
+};
+
+$("saveAdminBroadcast").onclick = async () => {
+  const payload = {
+    announce: adminBroadcastMessage.value.trim(),
+    supportUrl: adminBroadcastLinkUrl.value.trim()
+  };
+
+  const r = await api("/admin/settings/subscription-info", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) return setMessage(`Ошибка сохранения сообщения: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  renderAdminBroadcastPreview(j.subscriptionInfo || payload);
+  setMessage("Общее сообщение сохранено");
+};
 
 $("createClient").onclick = async () => {
   const name = $("newClientName").value.trim();
@@ -246,4 +303,6 @@ $("deleteCustomJson").onclick = async () => {
 };
 
 // init
-loadClients();
+Promise.all([loadClients(), loadAdminBroadcastSettings()]).catch((e) => {
+  setMessage(`Ошибка инициализации: ${e.message}`, false);
+});
