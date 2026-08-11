@@ -90,7 +90,7 @@ function normalizeSupportUrl(url) {
 
   try {
     const parsed = new URL(supportUrl);
-    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    if (!["http:", "https:", "tg:"].includes(parsed.protocol)) return "";
     return supportUrl;
   } catch {
     return "";
@@ -551,16 +551,6 @@ function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}
   return template;
 }
 
-function resolveProfilePageUrl(req) {
-  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
-  const forwardedHost = String(req.get("x-forwarded-host") || "").split(",")[0].trim();
-  const proto = forwardedProto || req.protocol || "http";
-  const host = forwardedHost || String(req.get("host") || "");
-
-  if (!host) return "";
-  return `${proto}://${host}${req.originalUrl || req.url || ""}`;
-}
-
 function applySubscriptionHeaders(res, req, subscriptionInfo = {}) {
   const normalized = normalizeSubscriptionInfo(subscriptionInfo);
 
@@ -571,11 +561,6 @@ function applySubscriptionHeaders(res, req, subscriptionInfo = {}) {
 
   if (normalized.supportUrl) {
     res.setHeader("Support-Url", normalized.supportUrl);
-  }
-
-  const profileUrl = resolveProfilePageUrl(req);
-  if (profileUrl) {
-    res.setHeader("Profile-Web-Page-Url", profileUrl);
   }
 }
 
