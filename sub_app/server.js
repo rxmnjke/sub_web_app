@@ -344,6 +344,22 @@ function getRequestOsVersion(req) {
   return "";
 }
 
+function getRequestIp(req) {
+  const forwardedFor = String(req.get("x-forwarded-for") || "").trim();
+  if (forwardedFor) {
+    const firstIp = forwardedFor
+      .split(",")
+      .map((part) => part.trim())
+      .find(Boolean);
+    if (firstIp) return firstIp;
+  }
+
+  const realIp = String(req.get("x-real-ip") || "").trim();
+  if (realIp) return realIp;
+
+  return String(req.ip || req.socket?.remoteAddress || "").trim();
+}
+
 function ensureClientDevices(client) {
   if (!Array.isArray(client.devices)) client.devices = [];
   return client.devices;
@@ -654,6 +670,7 @@ app.get("/sub/:token", async (req, res) => {
   const nowIso = new Date().toISOString();
   const hwid = getRequestHwid(req, res);
   const osVersion = getRequestOsVersion(req);
+  const lastIp = getRequestIp(req);
 
   if (hwid) {
     const devices = ensureClientDevices(client);
@@ -662,6 +679,7 @@ app.get("/sub/:token", async (req, res) => {
     if (found) {
       found.lastSeenAt = nowIso;
       if (osVersion) found.osVersion = osVersion;
+      if (lastIp) found.lastIp = lastIp;
     } else {
       if (HWID_ENFORCE && devices.length >= HWID_MAX_DEVICES) {
         const blockedConfig = {
@@ -677,6 +695,7 @@ app.get("/sub/:token", async (req, res) => {
       devices.push({
         hwid,
         osVersion,
+        lastIp,
         firstSeenAt: nowIso,
         lastSeenAt: nowIso
       });
