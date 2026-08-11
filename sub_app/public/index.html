@@ -59,6 +59,7 @@
         <th>HWID / Device ID</th>
         <th>Первое подключение</th>
         <th>Последняя активность</th>
+        <th>Действие</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -184,17 +185,54 @@
     meta.textContent = `Всего привязано: ${devices.length} / ${max}`;
 
     if (!devices.length) {
-      tbody.innerHTML = `<tr><td colspan="3">Пока нет привязанных устройств</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4">Пока нет привязанных устройств</td></tr>`;
       return;
     }
 
     tbody.innerHTML = devices.map(d => `
-      <tr>
-        <td><code>${String(d.hwid || "").replace(/</g, "&lt;")}</code></td>
-        <td>${fmtDate(d.firstSeenAt)}</td>
-        <td>${fmtDate(d.lastSeenAt)}</td>
-      </tr>
-    `).join("");
+    <tr>
+      <td><code>${String(d.hwid || "").replace(/</g, "&lt;")}</code></td>
+      <td>${fmtDate(d.firstSeenAt)}</td>
+      <td>${fmtDate(d.lastSeenAt)}</td>
+      <td>
+        <button
+          type="button"
+          class="danger"
+          data-del-hwid="${String(d.hwid || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;")}">
+          Удалить
+        </button>
+      </td>
+    </tr>
+  `).join("");
+
+    tbody.querySelectorAll("[data-del-hwid]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const hwid = btn.getAttribute("data-del-hwid");
+      const id = document.getElementById("clientSelect")?.value;
+      if (!id || !hwid) return;
+      if (!confirm(`Удалить устройство ${hwid}?`)) return;
+
+      const r = await fetch(`/admin/clients/${id}/devices/${encodeURIComponent(hwid)}`, {
+        method: "DELETE"
+      });
+      if (!r.ok) {
+        let err = `${r.status} ${r.statusText}`;
+        try { const j = await r.json(); err = j.error || err; } catch {}
+        alert(`Ошибка удаления устройства: ${err}`);
+        return;
+      }
+
+      const rc = await fetch(`/admin/clients/${id}`);
+      if (!rc.ok) return;
+      const updated = await rc.json();
+      renderDevices(updated);
+    });
+  });
   }
 </script>
 </body>

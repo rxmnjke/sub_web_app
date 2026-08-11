@@ -474,6 +474,25 @@ app.post("/admin/clients/:id/preview-merged-links", async (req, res) => {
   let fetchedCount = 0;
   for (const arr of fetched.grouped.values()) fetchedCount += arr.length;
 
+app.delete("/admin/clients/:id/devices/:hwid", (req, res) => {
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  const hwid = String(req.params.hwid || "").trim();
+  if (!hwid) return res.status(400).json({ error: "HWID is required" });
+
+  client.devices = Array.isArray(client.devices) ? client.devices : [];
+  const before = client.devices.length;
+  client.devices = client.devices.filter((d) => String(d.hwid) !== hwid);
+  const removed = before - client.devices.length;
+
+  client.updatedAt = new Date().toISOString();
+  writeDb(db);
+
+  return res.json({ ok: true, removed, devices: client.devices });
+});
+
   res.json({
     ok: true,
     manualLinks: manual.length,
