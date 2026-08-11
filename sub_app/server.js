@@ -258,6 +258,45 @@ function getRequestHwid(req, res) {
   return generated;
 }
 
+function mapWindowsVersion(version) {
+  if (version === "10.0") return "Windows 10/11";
+  if (version === "6.3") return "Windows 8.1";
+  if (version === "6.2") return "Windows 8";
+  if (version === "6.1") return "Windows 7";
+  return `Windows ${version}`;
+}
+
+function getRequestOsVersion(req) {
+  const fromHeader = String(req.get("x-os-version") || "").trim();
+  const fromQuery = String(req.query?.os_version || req.query?.os || "").trim();
+  if (fromHeader || fromQuery) return fromHeader || fromQuery;
+
+  const platform = String(req.get("sec-ch-ua-platform") || "").replaceAll('"', "").trim();
+  const platformVersion = String(req.get("sec-ch-ua-platform-version") || "")
+    .replaceAll('"', "")
+    .trim();
+  if (platform && platformVersion) return `${platform} ${platformVersion}`;
+  if (platform) return platform;
+
+  const ua = String(req.get("user-agent") || "");
+
+  let match = ua.match(/Windows NT ([0-9.]+)/i);
+  if (match) return mapWindowsVersion(match[1]);
+
+  match = ua.match(/Android ([0-9.]+)/i);
+  if (match) return `Android ${match[1]}`;
+
+  match = ua.match(/(?:CPU (?:iPhone )?OS|iPhone OS) ([0-9_]+)/i);
+  if (match) return `iOS ${match[1].replaceAll("_", ".")}`;
+
+  match = ua.match(/Mac OS X ([0-9_]+)/i);
+  if (match) return `macOS ${match[1].replaceAll("_", ".")}`;
+
+  if (/Linux/i.test(ua)) return "Linux";
+
+  return "";
+}
+
 function ensureClientDevices(client) {
   if (!Array.isArray(client.devices)) client.devices = [];
   return client.devices;
@@ -563,9 +602,11 @@ app.get("/sub/:token", async (req, res) => {
   if (!client) return res.status(404).json({ error: "Subscription not found" });
 
   res.setHeader("Profile-Update-Interval", String(SUB_UPDATE_INTERVAL_HOURS));
+  res.setHeader("Accept-CH", "Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version");
 
   const nowIso = new Date().toISOString();
   const hwid = getRequestHwid(req, res);
+  const osVersion = getRequestOsVersion(req);
 
   if (hwid) {
     const devices = ensureClientDevices(client);
@@ -573,6 +614,7 @@ app.get("/sub/:token", async (req, res) => {
 
     if (found) {
       found.lastSeenAt = nowIso;
+      if (osVersion) found.osVersion = osVersion;
     } else {
       if (HWID_ENFORCE && devices.length >= HWID_MAX_DEVICES) {
         const blockedConfig = {
@@ -585,7 +627,7 @@ app.get("/sub/:token", async (req, res) => {
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         return res.status(200).send(JSON.stringify(blockedConfig, null, 2));
       }
-      devices.push({ hwid, firstSeenAt: nowIso, lastSeenAt: nowIso });
+      devices.push({ hwid, osVersion, firstSeenAt: nowIso, lastSeenAt: nowIso });
     }
 
     client.updatedAt = nowIso;

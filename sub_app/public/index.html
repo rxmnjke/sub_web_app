@@ -175,6 +175,15 @@
     return d.toLocaleString();
   }
 
+  function escapeHtml(v) {
+    return String(v || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   function renderDevices(client) {
     const tbody = document.querySelector("#devicesTable tbody");
     const meta = document.getElementById("devicesMeta");
@@ -191,19 +200,17 @@
 
     tbody.innerHTML = devices.map(d => `
     <tr>
-      <td><code>${String(d.hwid || "").replace(/</g, "&lt;")}</code></td>
+      <td>
+        <code>${escapeHtml(d.hwid || "")}</code>
+        <div class="muted">OS: ${escapeHtml(d.osVersion || "не определена")}</div>
+      </td>
       <td>${fmtDate(d.firstSeenAt)}</td>
       <td>${fmtDate(d.lastSeenAt)}</td>
       <td>
         <button
           type="button"
           class="danger"
-          data-del-hwid="${String(d.hwid || "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;")}">
+          data-del-hwid="${escapeHtml(d.hwid || "")}">
           Удалить
         </button>
       </td>
