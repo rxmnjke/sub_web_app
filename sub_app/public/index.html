@@ -203,6 +203,7 @@
       <td>
         <code>${escapeHtml(d.hwid || "")}</code>
         <div class="muted">OS: ${escapeHtml(d.osVersion || "не определена")}</div>
+        <div class="muted">RAW: ${escapeHtml(d.requestDiagnostics || "нет данных")}</div>
       </td>
       <td>${fmtDate(d.firstSeenAt)}</td>
       <td>${fmtDate(d.lastSeenAt)}</td>
