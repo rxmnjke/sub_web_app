@@ -75,6 +75,20 @@ function renderAdminBroadcastPreview(payload = {}) {
     : safeMessage;
 }
 
+function insertAtCursor(input, text) {
+  if (!input || !text) return;
+
+  const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
+  const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : input.value.length;
+  const before = input.value.slice(0, start);
+  const after = input.value.slice(end);
+
+  input.value = `${before}${text}${after}`;
+  const next = start + text.length;
+  input.selectionStart = next;
+  input.selectionEnd = next;
+}
+
 async function loadAdminBroadcastSettings() {
   const r = await api("/admin/settings");
   if (!r.ok) return setMessage(`Ошибка загрузки сообщения: ${await safeErr(r)}`, false);
@@ -164,6 +178,34 @@ $("saveAdminBroadcast").onclick = async () => {
   renderAdminBroadcastPreview(j.subscriptionInfo || payload);
   setMessage("Общее сообщение сохранено");
 };
+
+adminBroadcastMessage.addEventListener("input", () => {
+  renderAdminBroadcastPreview({
+    announce: adminBroadcastMessage.value,
+    supportUrl: adminBroadcastLinkUrl.value
+  });
+});
+
+adminBroadcastLinkUrl.addEventListener("input", () => {
+  renderAdminBroadcastPreview({
+    announce: adminBroadcastMessage.value,
+    supportUrl: adminBroadcastLinkUrl.value
+  });
+});
+
+document.querySelectorAll("[data-emoji]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const emoji = String(btn.getAttribute("data-emoji") || "");
+    if (!emoji) return;
+
+    insertAtCursor(adminBroadcastMessage, emoji);
+    adminBroadcastMessage.focus();
+    renderAdminBroadcastPreview({
+      announce: adminBroadcastMessage.value,
+      supportUrl: adminBroadcastLinkUrl.value
+    });
+  });
+});
 
 $("createClient").onclick = async () => {
   const name = $("newClientName").value.trim();

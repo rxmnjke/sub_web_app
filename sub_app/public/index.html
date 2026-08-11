@@ -23,6 +23,8 @@
     .sub-grid { display: grid; grid-template-columns: 1fr 180px; gap: 10px; margin-bottom: 10px; }
     .broadcast-preview { margin-top: 10px; padding: 10px; border: 1px dashed #bbb; border-radius: 8px; }
     .broadcast-preview .icon-link { margin-left: 6px; text-decoration: none; }
+    .emoji-row { margin-top: 8px; }
+    .emoji-btn { padding: 4px 8px; min-width: 34px; }
   </style>
 </head>
 <body>
@@ -34,6 +36,17 @@
     <p class="muted">Режим как в 3x-ui: сообщение уходит в заголовок Announce, ссылка в Support-Url.</p>
     <div class="row">
       <textarea id="adminBroadcastMessage" class="w520" placeholder="Announce: текст сообщения для всех клиентов"></textarea>
+    </div>
+    <div class="row emoji-row">
+      <span class="muted">Быстрые эмодзи:</span>
+      <button type="button" class="emoji-btn" data-emoji="📢">📢</button>
+      <button type="button" class="emoji-btn" data-emoji="✅">✅</button>
+      <button type="button" class="emoji-btn" data-emoji="⚠️">⚠️</button>
+      <button type="button" class="emoji-btn" data-emoji="🔄">🔄</button>
+      <button type="button" class="emoji-btn" data-emoji="🕒">🕒</button>
+      <button type="button" class="emoji-btn" data-emoji="⏱️">⏱️</button>
+      <button type="button" class="emoji-btn" data-emoji="🚀">🚀</button>
+      <button type="button" class="emoji-btn" data-emoji="💬">💬</button>
     </div>
     <div class="row">
       <input id="adminBroadcastLinkUrl" class="w520" placeholder="Support-Url (необязательно): https://... или tg://..." />
