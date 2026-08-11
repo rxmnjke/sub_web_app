@@ -20,6 +20,7 @@ const SUB_UPDATE_INTERVAL_HOURS = Number(process.env.SUB_UPDATE_INTERVAL_HOURS |
 const HWID_ENFORCE = String(process.env.HWID_ENFORCE || "true").toLowerCase() === "true";
 const HWID_MAX_DEVICES = Number(process.env.HWID_MAX_DEVICES || 2);
 const HWID_HEADER_NAME = String(process.env.HWID_HEADER_NAME || "x-hwid").toLowerCase();
+const BROWSER_HWID_COOKIE = "sub_device_id";
 
 // in-memory cache: key=url, value={ expiresAt:number, text:string }
 const subCache = new Map();
@@ -196,12 +197,65 @@ function extractVlessLinks(raw) {
     .filter((x) => x.startsWith("vless://"));
 }
 
-function getRequestHwid(req) {
+function parseCookies(req) {
+  const raw = String(req.headers.cookie || "");
+  const out = {};
+
+  for (const part of raw.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex === -1) continue;
+
+    const key = trimmed.slice(0, eqIndex).trim();
+    const value = trimmed.slice(eqIndex + 1).trim();
+    if (!key) continue;
+
+    out[key] = decodeURIComponent(value);
+  }
+
+  return out;
+}
+
+function isBrowserNavigationRequest(req) {
+  const accept = String(req.get("accept") || "").toLowerCase();
+  const secFetchDest = String(req.get("sec-fetch-dest") || "").toLowerCase();
+  const secFetchMode = String(req.get("sec-fetch-mode") || "").toLowerCase();
+
+  return accept.includes("text/html") || secFetchDest === "document" || secFetchMode === "navigate";
+}
+
+function setBrowserHwidCookie(req, res, hwid) {
+  const forwardedProto = String(req.get("x-forwarded-proto") || "").toLowerCase();
+  const isSecure = req.secure || forwardedProto === "https";
+  const parts = [
+    `${BROWSER_HWID_COOKIE}=${encodeURIComponent(hwid)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=31536000"
+  ];
+
+  if (isSecure) parts.push("Secure");
+  res.append("Set-Cookie", parts.join("; "));
+}
+
+function getRequestHwid(req, res) {
   const fromHeader = String(req.get(HWID_HEADER_NAME) || "").trim();
   const fromQueryHwid = String(req.query?.hwid || "").trim();
   const fromQueryDeviceId = String(req.query?.device_id || "").trim();
+  const fromCookie = String(parseCookies(req)[BROWSER_HWID_COOKIE] || "").trim();
 
-  return fromHeader || fromQueryHwid || fromQueryDeviceId || "";
+  if (fromHeader || fromQueryHwid || fromQueryDeviceId || fromCookie) {
+    return fromHeader || fromQueryHwid || fromQueryDeviceId || fromCookie;
+  }
+
+  if (!isBrowserNavigationRequest(req)) return "";
+
+  const generated = `browser-${crypto.randomUUID()}`;
+  setBrowserHwidCookie(req, res, generated);
+  return generated;
 }
 
 function ensureClientDevices(client) {
@@ -511,7 +565,7 @@ app.get("/sub/:token", async (req, res) => {
   res.setHeader("Profile-Update-Interval", String(SUB_UPDATE_INTERVAL_HOURS));
 
   const nowIso = new Date().toISOString();
-  const hwid = getRequestHwid(req);
+  const hwid = getRequestHwid(req, res);
 
   if (hwid) {
     const devices = ensureClientDevices(client);
