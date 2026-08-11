@@ -474,6 +474,15 @@ app.post("/admin/clients/:id/preview-merged-links", async (req, res) => {
   let fetchedCount = 0;
   for (const arr of fetched.grouped.values()) fetchedCount += arr.length;
 
+  res.json({
+    ok: true,
+    manualLinks: manual.length,
+    fetchedLinks: fetchedCount,
+    totalMergedApprox: manual.length + fetchedCount,
+    fetchStats: fetched.stats
+  });
+});
+
 app.delete("/admin/clients/:id/devices/:hwid", (req, res) => {
   const db = readDb();
   const client = db.clients.find((c) => c.id === req.params.id);
@@ -491,15 +500,6 @@ app.delete("/admin/clients/:id/devices/:hwid", (req, res) => {
   writeDb(db);
 
   return res.json({ ok: true, removed, devices: client.devices });
-});
-
-  res.json({
-    ok: true,
-    manualLinks: manual.length,
-    fetchedLinks: fetchedCount,
-    totalMergedApprox: manual.length + fetchedCount,
-    fetchStats: fetched.stats
-  });
 });
 
 // Public subscription endpoint
