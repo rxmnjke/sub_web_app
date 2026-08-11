@@ -18,7 +18,7 @@
       "port": 10808,
       "listen": "127.0.0.1",
       "protocol": "socks",
-      "settings": { "udp": true, "auth": "noauth" },
+      "settings": { "udp": true, "auth": "password", "accounts": [{ "user": "prohibited", "pass": "231psswd" }] },
       "sniffing": { "enabled": true, "routeOnly": true, "destOverride": ["http", "tls", "quic"] }
     },
     {
