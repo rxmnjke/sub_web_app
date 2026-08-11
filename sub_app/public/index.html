@@ -50,6 +50,21 @@
       <button id="deleteClient" class="danger">Удалить клиента</button>
     </div>
 
+  <div class="panel">
+  <h3>Привязанные устройства (HWID)</h3>
+  <div id="devicesMeta" class="muted"></div>
+  <table id="devicesTable" border="1" cellspacing="0" cellpadding="6" style="width:100%; margin-top:8px;">
+    <thead>
+      <tr>
+        <th>HWID / Device ID</th>
+        <th>Первое подключение</th>
+        <th>Последняя активность</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
     <h4>Импорт VLESS ссылок (ручные)</h4>
     <p class="muted">Одна ссылка на строку</p>
     <textarea id="vlessLinks" placeholder="vless://..."></textarea>
@@ -150,5 +165,37 @@
   </div>
 
   <script src="/admin-ui/app.js"></script>
+
+  <script>
+  function fmtDate(v) {
+    if (!v) return "—";
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return v;
+    return d.toLocaleString();
+  }
+
+  function renderDevices(client) {
+    const tbody = document.querySelector("#devicesTable tbody");
+    const meta = document.getElementById("devicesMeta");
+    if (!tbody || !meta) return;
+
+    const devices = Array.isArray(client.devices) ? client.devices : [];
+    const max = 2; // или подставь значение с бэка, если отдаёшь его
+    meta.textContent = `Всего привязано: ${devices.length} / ${max}`;
+
+    if (!devices.length) {
+      tbody.innerHTML = `<tr><td colspan="3">Пока нет привязанных устройств</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = devices.map(d => `
+      <tr>
+        <td><code>${String(d.hwid || "").replace(/</g, "&lt;")}</code></td>
+        <td>${fmtDate(d.firstSeenAt)}</td>
+        <td>${fmtDate(d.lastSeenAt)}</td>
+      </tr>
+    `).join("");
+  }
+</script>
 </body>
 </html>

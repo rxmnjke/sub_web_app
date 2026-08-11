@@ -131,6 +131,7 @@ $("showClient").onclick = async () => {
   if (!r.ok) return setMessage(`Ошибка: ${await safeErr(r)}`, false);
 
   const c = await r.json();
+  renderDevices(c);
   $("vlessLinks").value = (c.links || []).join("\n");
   setSourceSubItemsToForm(c.sourceSubs || []);
   $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
@@ -149,6 +150,7 @@ $("deleteClient").onclick = async () => {
   $("vlessLinks").value = "";
   $("customJson").value = "";
   setSourceSubItemsToForm([]);
+  renderDevices({ devices: [] });
   setMessage("Клиент удален");
   await loadClients();
 };
