@@ -577,7 +577,10 @@ app.get("/sub/:token", async (req, res) => {
       if (HWID_ENFORCE && devices.length >= HWID_MAX_DEVICES) {
         const limitMessage = "Превышен лимит устройств";
         const blockedConfig = {
-          remarks: limitMessage
+          remarks: limitMessage,
+          log: { loglevel: "warning" },
+          inbounds: [],
+          outbounds: []
         };
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         return res.status(200).send(JSON.stringify(blockedConfig, null, 2));
