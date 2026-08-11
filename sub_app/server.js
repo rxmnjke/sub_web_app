@@ -266,20 +266,6 @@ function mapWindowsVersion(version) {
   return `Windows ${version}`;
 }
 
-function getFirstDeviceInfoToken(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-
-  const [firstChunk] = raw.split(/[|,;]+/, 1);
-  const token = String(firstChunk || "")
-    .trim()
-    .split(/\s+/, 1)[0]
-    ?.trim()
-    .replace(/^[\[({"']+|[\])}"']+$/g, "") || "";
-
-  return token;
-}
-
 function getRequestOsVersion(req) {
   const fromHeader = String(req.get("x-os-version") || "").trim();
   const fromQuery = String(req.query?.os_version || req.query?.os || "").trim();
@@ -294,7 +280,7 @@ function getRequestOsVersion(req) {
     req.query?.deviceInfo,
     req.query?.deviceinfo
   ]
-    .map((value) => getFirstDeviceInfoToken(value))
+    .map((value) => String(value || "").trim())
     .find(Boolean);
   if (deviceInfo) return deviceInfo;
 
