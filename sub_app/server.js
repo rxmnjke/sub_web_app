@@ -266,10 +266,37 @@ function mapWindowsVersion(version) {
   return `Windows ${version}`;
 }
 
+function getFirstDeviceInfoToken(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const [firstChunk] = raw.split(/[|,;]+/, 1);
+  const token = String(firstChunk || "")
+    .trim()
+    .split(/\s+/, 1)[0]
+    ?.trim()
+    .replace(/^[\[({"']+|[\])}"']+$/g, "") || "";
+
+  return token;
+}
+
 function getRequestOsVersion(req) {
   const fromHeader = String(req.get("x-os-version") || "").trim();
   const fromQuery = String(req.query?.os_version || req.query?.os || "").trim();
   if (fromHeader || fromQuery) return fromHeader || fromQuery;
+
+  const deviceInfo = [
+    req.get("device-info"),
+    req.get("device_info"),
+    req.get("x-device-info"),
+    req.get("x-device_info"),
+    req.query?.device_info,
+    req.query?.deviceInfo,
+    req.query?.deviceinfo
+  ]
+    .map((value) => getFirstDeviceInfoToken(value))
+    .find(Boolean);
+  if (deviceInfo) return deviceInfo;
 
   const platform = String(req.get("sec-ch-ua-platform") || "").replaceAll('"', "").trim();
   const platformVersion = String(req.get("sec-ch-ua-platform-version") || "")
