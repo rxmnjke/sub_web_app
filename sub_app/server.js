@@ -285,40 +285,6 @@ function findRequestValueByKeys(source, matchers = []) {
   return "";
 }
 
-function collectRequestDiagnostics(req) {
-  const interestingMatchers = [
-    (key) => key.includes("device"),
-    (key) => key.includes("client"),
-    (key) => key.includes("system"),
-    (key) => key.includes("os"),
-    (key) => key.includes("platform"),
-    (key) => key.includes("agent"),
-    (key) => key.includes("model")
-  ];
-
-  const parts = [];
-
-  for (const [rawKey, rawValue] of Object.entries(req.headers || {})) {
-    const key = normalizeLookupKey(rawKey);
-    if (!key || !interestingMatchers.some((matcher) => matcher(key))) continue;
-    const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
-    const text = String(value || "").trim();
-    if (!text) continue;
-    parts.push(`h:${rawKey}=${text}`);
-  }
-
-  for (const [rawKey, rawValue] of Object.entries(req.query || {})) {
-    const key = normalizeLookupKey(rawKey);
-    if (!key || !interestingMatchers.some((matcher) => matcher(key))) continue;
-    const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
-    const text = String(value || "").trim();
-    if (!text) continue;
-    parts.push(`q:${rawKey}=${text}`);
-  }
-
-  return parts.slice(0, 12).join(" | ");
-}
-
 function getRequestOsVersion(req) {
   const fromHeader = String(req.get("x-os-version") || "").trim();
   const fromQuery = String(req.query?.os_version || req.query?.os || "").trim();
@@ -688,7 +654,6 @@ app.get("/sub/:token", async (req, res) => {
   const nowIso = new Date().toISOString();
   const hwid = getRequestHwid(req, res);
   const osVersion = getRequestOsVersion(req);
-  const requestDiagnostics = collectRequestDiagnostics(req);
 
   if (hwid) {
     const devices = ensureClientDevices(client);
@@ -697,7 +662,6 @@ app.get("/sub/:token", async (req, res) => {
     if (found) {
       found.lastSeenAt = nowIso;
       if (osVersion) found.osVersion = osVersion;
-      if (requestDiagnostics) found.requestDiagnostics = requestDiagnostics;
     } else {
       if (HWID_ENFORCE && devices.length >= HWID_MAX_DEVICES) {
         const blockedConfig = {
@@ -713,7 +677,6 @@ app.get("/sub/:token", async (req, res) => {
       devices.push({
         hwid,
         osVersion,
-        requestDiagnostics,
         firstSeenAt: nowIso,
         lastSeenAt: nowIso
       });
