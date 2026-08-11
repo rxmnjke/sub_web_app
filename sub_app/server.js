@@ -266,23 +266,51 @@ function mapWindowsVersion(version) {
   return `Windows ${version}`;
 }
 
+function normalizeLookupKey(key) {
+  return String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function findRequestValueByKeys(source, matchers = []) {
+  if (!source || typeof source !== "object") return "";
+
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    const key = normalizeLookupKey(rawKey);
+    if (!key || !matchers.some((matcher) => matcher(key))) continue;
+
+    const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+    const text = String(value || "").trim();
+    if (text) return text;
+  }
+
+  return "";
+}
+
 function getRequestOsVersion(req) {
   const fromHeader = String(req.get("x-os-version") || "").trim();
   const fromQuery = String(req.query?.os_version || req.query?.os || "").trim();
   if (fromHeader || fromQuery) return fromHeader || fromQuery;
 
-  const deviceInfo = [
-    req.get("device-info"),
-    req.get("device_info"),
-    req.get("x-device-info"),
-    req.get("x-device_info"),
-    req.query?.device_info,
-    req.query?.deviceInfo,
-    req.query?.deviceinfo
-  ]
-    .map((value) => String(value || "").trim())
-    .find(Boolean);
+  const deviceInfoMatchers = [
+    (key) => key.includes("deviceinfo"),
+    (key) => key.includes("devinfo"),
+    (key) => key.includes("systeminfo"),
+    (key) => key.includes("clientinfo")
+  ];
+  const deviceInfo =
+    findRequestValueByKeys(req.headers, deviceInfoMatchers) ||
+    findRequestValueByKeys(req.query, deviceInfoMatchers);
   if (deviceInfo) return deviceInfo;
+
+  const osMatchers = [
+    (key) => key.includes("osversion"),
+    (key) => key.includes("platformversion"),
+    (key) => key === "platform",
+    (key) => key === "os"
+  ];
+  const genericOsValue =
+    findRequestValueByKeys(req.headers, osMatchers) ||
+    findRequestValueByKeys(req.query, osMatchers);
+  if (genericOsValue) return genericOsValue;
 
   const platform = String(req.get("sec-ch-ua-platform") || "").replaceAll('"', "").trim();
   const platformVersion = String(req.get("sec-ch-ua-platform-version") || "")
