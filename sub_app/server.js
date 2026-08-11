@@ -324,6 +324,12 @@ function getRequestOsVersion(req) {
   const fromQuery = String(req.query?.os_version || req.query?.os || "").trim();
   if (fromHeader || fromQuery) return fromHeader || fromQuery;
 
+  const happDeviceOs = String(req.get("x-device-os") || req.query?.device_os || "").trim();
+  const happOsVersion = String(req.get("x-ver-os") || req.query?.ver_os || "").trim();
+  if (happDeviceOs && happOsVersion) return `${happDeviceOs} ${happOsVersion}`;
+  if (happDeviceOs) return happDeviceOs;
+  if (happOsVersion) return happOsVersion;
+
   const deviceInfoMatchers = [
     (key) => key.includes("deviceinfo"),
     (key) => key.includes("devinfo"),
