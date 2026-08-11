@@ -502,10 +502,16 @@ app.get("/sub/:token", async (req, res) => {
       found.lastSeenAt = nowIso;
     } else {
       if (HWID_ENFORCE && devices.length >= HWID_MAX_DEVICES) {
-        return res.status(403).json({
-          error: "Device limit exceeded",
-          maxDevices: HWID_MAX_DEVICES
-        });
+        const limitMessage = "Превышен лимит устройств";
+        const blockedConfig = {
+          remarks: limitMessage,
+          log: { loglevel: "warning" },
+          inbounds: [],
+          outbounds: [],
+          routing: { rules: [] }
+        };
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        return res.status(200).send(JSON.stringify(blockedConfig, null, 2));
       }
       devices.push({ hwid, firstSeenAt: nowIso, lastSeenAt: nowIso });
     }
