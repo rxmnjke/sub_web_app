@@ -570,14 +570,34 @@ function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}
   return template;
 }
 
-function applySubscriptionHeaders(res, req, subscriptionInfo = {}) {
-  const normalized = normalizeSubscriptionInfo(subscriptionInfo);
+function buildDeviceUsageMessage(client = null) {
+  if (!client) return "";
 
-  if (normalized.announce) {
-    const encoded = Buffer.from(normalized.announce, "utf8").toString("base64");
+  const devices = ensureClientDevices(client);
+  const limit = normalizeMaxDevices(client.maxDevices, HWID_MAX_DEVICES);
+  return `Задействовано устройств - ${devices.length} из ${limit}`;
+}
+
+function buildSubscriptionAnnounce(subscriptionInfo = {}, client = null) {
+  const normalized = normalizeSubscriptionInfo(subscriptionInfo);
+  const message = normalized.announce ? normalized.announce.trim() : "";
+  const usage = buildDeviceUsageMessage(client);
+
+  if (!message && !usage) return "";
+  if (!message) return usage;
+  if (!usage) return message;
+  return `${message}\n${usage}`;
+}
+
+function applySubscriptionHeaders(res, req, subscriptionInfo = {}, client = null) {
+  const announceText = buildSubscriptionAnnounce(subscriptionInfo, client);
+
+  if (announceText) {
+    const encoded = Buffer.from(announceText, "utf8").toString("base64");
     res.setHeader("Announce", `base64:${encoded}`);
   }
 
+  const normalized = normalizeSubscriptionInfo(subscriptionInfo);
   if (normalized.supportUrl) {
     res.setHeader("Support-Url", normalized.supportUrl);
   }
@@ -810,7 +830,7 @@ app.get("/sub/:token", async (req, res) => {
 
   res.setHeader("Profile-Update-Interval", String(SUB_UPDATE_INTERVAL_HOURS));
   res.setHeader("Accept-CH", "Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version");
-  applySubscriptionHeaders(res, req, subscriptionInfo);
+  applySubscriptionHeaders(res, req, subscriptionInfo, client);
 
   const nowIso = new Date().toISOString();
   const hwid = getRequestHwid(req, res);
@@ -828,12 +848,11 @@ app.get("/sub/:token", async (req, res) => {
       if (lastIp) found.lastIp = lastIp;
     } else {
       if (HWID_ENFORCE && devices.length >= limit) {
-        const message = `Задействовано устройств - ${devices.length} из ${limit}`;
         const blockedConfig = {
           "inbounds": [],
           "meta": null,
           "outbounds": null,
-          "remarks": message
+          "remarks": "Превышен лимит устройств"
         };
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         return res.status(200).send(JSON.stringify(blockedConfig, null, 2));
