@@ -116,9 +116,28 @@ function toLegacyAdminBroadcast(subscriptionInfo = {}) {
   };
 }
 
+function normalizeMaxDevices(value, fallback = HWID_MAX_DEVICES) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw < 1) {
+    const fallbackValue = Number(fallback);
+    return Number.isFinite(fallbackValue) && fallbackValue > 0 ? Math.floor(fallbackValue) : 2;
+  }
+  return Math.floor(raw);
+}
+
+function normalizeClient(rawClient = {}) {
+  const client = typeof rawClient === "object" && rawClient ? rawClient : {};
+  if (!Array.isArray(client.devices)) client.devices = [];
+  if (!Array.isArray(client.links)) client.links = [];
+  if (!Array.isArray(client.sourceSubs)) client.sourceSubs = [];
+  client.maxDevices = normalizeMaxDevices(client.maxDevices, HWID_MAX_DEVICES);
+  return client;
+}
+
 function normalizeDbShape(rawDb = {}) {
   const db = typeof rawDb === "object" && rawDb ? rawDb : {};
   if (!Array.isArray(db.clients)) db.clients = [];
+  db.clients = db.clients.map(normalizeClient);
   if (!db.settings || typeof db.settings !== "object") db.settings = {};
 
   const legacy = db.settings.adminBroadcast || {};
@@ -585,6 +604,7 @@ app.post("/admin/clients", (req, res) => {
     links: [],
     sourceSubs: [], // [{ url, country }]
     devices: [], // [{ hwid, firstSeenAt, lastSeenAt }]
+    maxDevices: normalizeMaxDevices(req.body?.maxDevices, HWID_MAX_DEVICES),
     customJson: null
   };
 
@@ -748,6 +768,20 @@ app.post("/admin/clients/:id/preview-merged-links", async (req, res) => {
   });
 });
 
+app.post("/admin/clients/:id/max-devices", (req, res) => {
+  const { maxDevices } = req.body || {};
+
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  client.maxDevices = normalizeMaxDevices(maxDevices, client.maxDevices || HWID_MAX_DEVICES);
+  client.updatedAt = new Date().toISOString();
+  writeDb(db);
+
+  return res.json({ ok: true, maxDevices: client.maxDevices });
+});
+
 app.delete("/admin/clients/:id/devices/:hwid", (req, res) => {
   const db = readDb();
   const client = db.clients.find((c) => c.id === req.params.id);
@@ -785,6 +819,7 @@ app.get("/sub/:token", async (req, res) => {
 
   if (hwid) {
     const devices = ensureClientDevices(client);
+    const limit = normalizeMaxDevices(client.maxDevices, HWID_MAX_DEVICES);
     const found = devices.find((d) => d.hwid === hwid);
 
     if (found) {
@@ -792,14 +827,14 @@ app.get("/sub/:token", async (req, res) => {
       if (osVersion) found.osVersion = osVersion;
       if (lastIp) found.lastIp = lastIp;
     } else {
-      if (HWID_ENFORCE && devices.length >= HWID_MAX_DEVICES) {
+      if (HWID_ENFORCE && devices.length >= limit) {
+        const message = `Задействовано устройств - ${devices.length} из ${limit}`;
         const blockedConfig = {
-          "inbounds": [
-          ],
+          "inbounds": [],
           "meta": null,
           "outbounds": null,
-          "remarks": "Превышен лимит устройств"
-      }
+          "remarks": message
+        };
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         return res.status(200).send(JSON.stringify(blockedConfig, null, 2));
       }

@@ -69,6 +69,7 @@
     <h3>2) Создать клиента</h3>
     <div class="row">
       <input id="newClientName" class="w400" placeholder="Имя клиента" />
+      <input id="newClientMaxDevices" type="number" min="1" max="100" value="2" style="width: 150px;" placeholder="Лимит устройств" />
       <button id="createClient">Создать</button>
     </div>
   </div>
@@ -79,6 +80,11 @@
       <select id="clientSelect" class="w520"></select>
       <button id="showClient">Показать клиента</button>
       <button id="deleteClient" class="danger">Удалить клиента</button>
+    </div>
+    <div class="row" style="margin-top: 10px;">
+      <label for="clientMaxDevices">Лимит устройств:</label>
+      <input id="clientMaxDevices" type="number" min="1" max="100" value="2" style="width: 140px;" />
+      <button id="saveClientMaxDevices">Сохранить лимит</button>
     </div>
 
   <div class="panel">
@@ -221,8 +227,8 @@
     if (!tbody || !meta) return;
 
     const devices = Array.isArray(client.devices) ? client.devices : [];
-    const max = 2; // или подставь значение с бэка, если отдаёшь его
-    meta.textContent = `Всего привязано: ${devices.length} / ${max}`;
+    const max = Number(client.maxDevices) > 0 ? Number(client.maxDevices) : 2;
+    meta.textContent = `Задействовано устройств - ${devices.length} из ${max}`;
 
     if (!devices.length) {
       tbody.innerHTML = `<tr><td colspan="4">Пока нет привязанных устройств</td></tr>`;

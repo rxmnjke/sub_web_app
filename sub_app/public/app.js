@@ -209,15 +209,20 @@ document.querySelectorAll("[data-emoji]").forEach((btn) => {
 
 $("createClient").onclick = async () => {
   const name = $("newClientName").value.trim();
+  const maxDevices = Number($("newClientMaxDevices").value);
   if (!name) return setMessage("Введите имя клиента", false);
 
   const r = await api("/admin/clients", {
     method: "POST",
-    body: JSON.stringify({ name })
+    body: JSON.stringify({
+      name,
+      maxDevices: Number.isFinite(maxDevices) && maxDevices > 0 ? maxDevices : 2
+    })
   });
   if (!r.ok) return setMessage(`Ошибка создания: ${await safeErr(r)}`, false);
 
   $("newClientName").value = "";
+  $("newClientMaxDevices").value = "2";
   setMessage("Клиент создан");
   await loadClients();
 };
@@ -231,10 +236,36 @@ $("showClient").onclick = async () => {
 
   const c = await r.json();
   renderDevices(c);
+  $("clientMaxDevices").value = Number(c.maxDevices) > 0 ? Number(c.maxDevices) : 2;
   $("vlessLinks").value = (c.links || []).join("\n");
   setSourceSubItemsToForm(c.sourceSubs || []);
   $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
   setMessage(`Клиент "${c.name}" загружен`);
+};
+
+$("saveClientMaxDevices").onclick = async () => {
+  const id = clientSelect.value;
+  if (!id) return setMessage("Выберите клиента", false);
+
+  const maxDevices = Number($("clientMaxDevices").value);
+  if (!Number.isFinite(maxDevices) || maxDevices < 1) {
+    return setMessage("Укажите корректный лимит устройств (минимум 1)", false);
+  }
+
+  const r = await api(`/admin/clients/${id}/max-devices`, {
+    method: "POST",
+    body: JSON.stringify({ maxDevices })
+  });
+  if (!r.ok) return setMessage(`Ошибка сохранения лимита: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  $("clientMaxDevices").value = Number(j.maxDevices) > 0 ? Number(j.maxDevices) : 2;
+  const client = await api(`/admin/clients/${id}`);
+  if (client.ok) {
+    const updated = await client.json();
+    renderDevices(updated);
+  }
+  setMessage(`Лимит устройств сохранён: ${j.maxDevices}`);
 };
 
 $("deleteClient").onclick = async () => {
