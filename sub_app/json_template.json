@@ -107,7 +107,8 @@
           "domain:my.games",
           "domain:4pda.to",
           "domain:avito.st",
-          "domain:emias.info"
+          "domain:emias.info",
+          "domain:digital.uni.rest"
         ],
         "outboundTag": "direct"
       },
