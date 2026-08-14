@@ -107,11 +107,13 @@ function renderClients(clients) {
     const tr = document.createElement("tr");
     const mode = c.customJson ? "customJson" : "template";
     const subUrl = `${currentOrigin()}/sub/${c.token}`;
+    const maxDevices = Number(c.maxDevices) > 0 ? Number(c.maxDevices) : 2;
     tr.innerHTML = `
       <td>${escapeHtml(c.name || "")}</td>
       <td class="small">${escapeHtml(c.id)}</td>
       <td class="small">${escapeHtml(c.token)}</td>
       <td>${mode}</td>
+      <td>${maxDevices}</td>
       <td>${Array.isArray(c.links) ? c.links.length : 0}</td>
       <td>${Array.isArray(c.sourceSubs) ? c.sourceSubs.length : 0}</td>
       <td class="small"><a href="${subUrl}" target="_blank">${subUrl}</a></td>
@@ -209,20 +211,18 @@ document.querySelectorAll("[data-emoji]").forEach((btn) => {
 
 $("createClient").onclick = async () => {
   const name = $("newClientName").value.trim();
-  const maxDevices = Number($("newClientMaxDevices").value);
   if (!name) return setMessage("Введите имя клиента", false);
 
   const r = await api("/admin/clients", {
     method: "POST",
     body: JSON.stringify({
       name,
-      maxDevices: Number.isFinite(maxDevices) && maxDevices > 0 ? maxDevices : 2
+      maxDevices: 2
     })
   });
   if (!r.ok) return setMessage(`Ошибка создания: ${await safeErr(r)}`, false);
 
   $("newClientName").value = "";
-  $("newClientMaxDevices").value = "2";
   setMessage("Клиент создан");
   await loadClients();
 };
