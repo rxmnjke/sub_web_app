@@ -88,25 +88,9 @@
 
     <div style="margin-top: 16px;">
       <h4>Правила Xray для клиента</h4>
-      <div class="row">
-        <label for="clientXrayAction">Действие:</label>
-        <select id="clientXrayAction">
-          <option value="block">Блокировать</option>
-          <option value="direct">Вести напрямую</option>
-          <option value="tunnel">Через туннель (первый outbound)</option>
-        </select>
-      </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
-        <div>
-          <label for="clientXrayDomains">Домены</label>
-          <textarea id="clientXrayDomains" rows="6" placeholder="example.com&#10;*.vk.com"></textarea>
-        </div>
-        <div>
-          <label for="clientXrayCidrs">CIDR</label>
-          <textarea id="clientXrayCidrs" rows="6" placeholder="10.0.0.0/8&#10;192.168.0.0/16"></textarea>
-        </div>
-      </div>
+      <div id="clientXrayRulesList"></div>
       <div class="row" style="margin-top: 10px;">
+        <button type="button" id="addClientXrayRule">Добавить правило</button>
         <button id="saveClientXrayRules">Сохранить правила Xray</button>
       </div>
     </div>

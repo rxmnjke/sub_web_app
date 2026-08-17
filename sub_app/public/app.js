@@ -133,36 +133,86 @@ function getSourceSubItemsFromForm() {
   return items;
 }
 
-function getClientXrayRulesFromForm() {
-  const domains = $("clientXrayDomains").value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const cidrs = $("clientXrayCidrs").value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+function createClientXrayRuleRow(rule = {}) {
+  const row = document.createElement("div");
+  row.className = "row client-xray-rule-row";
+  row.style.marginTop = "8px";
+  row.style.alignItems = "center";
 
-  return {
-    domains,
-    cidrs,
-    action: $("clientXrayAction").value
-  };
+  const type = document.createElement("select");
+  type.innerHTML = `
+    <option value="domain">Домен</option>
+    <option value="cidr">CIDR</option>
+  `;
+  type.value = rule.type === "cidr" ? "cidr" : "domain";
+
+  const value = document.createElement("input");
+  value.type = "text";
+  value.value = String(rule.value || "");
+  value.placeholder = rule.type === "cidr" ? "192.168.0.0/16" : "example.com";
+  value.style.width = "280px";
+
+  const action = document.createElement("select");
+  action.innerHTML = `
+    <option value="block">Блокировать</option>
+    <option value="direct">Вести напрямую</option>
+    <option value="tunnel">Через туннель</option>
+  `;
+  action.value = ["block", "direct", "tunnel"].includes(rule.action) ? rule.action : "block";
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.textContent = "Удалить";
+  remove.className = "danger";
+  remove.onclick = () => row.remove();
+
+  row.append(type, value, action, remove);
+  return row;
+}
+
+function renderClientXrayRules(rows = []) {
+  const list = $("clientXrayRulesList");
+  if (!list) return;
+  list.innerHTML = "";
+
+  if (!rows.length) {
+    list.appendChild(createClientXrayRuleRow({ type: "domain", value: "", action: "block" }));
+    return;
+  }
+
+  for (const rule of rows) {
+    list.appendChild(createClientXrayRuleRow(rule));
+  }
+}
+
+function getClientXrayRulesFromForm() {
+  const list = $("clientXrayRulesList");
+  if (!list) return [];
+
+  const rows = list.querySelectorAll(".client-xray-rule-row");
+  const rules = [];
+
+  for (const row of rows) {
+    const type = row.querySelector("select")?.value || "domain";
+    const valueEl = row.querySelector("input[type='text']");
+    const actionEl = row.querySelectorAll("select")[1];
+    const value = String(valueEl?.value || "").trim();
+    const action = actionEl?.value || "block";
+
+    if (!value) continue;
+    rules.push({
+      type,
+      value,
+      action
+    });
+  }
+
+  return rules;
 }
 
 function setClientXrayRulesToForm(rules = []) {
-  const domainList = [];
-  const cidrList = [];
-  const action = Array.isArray(rules) && rules.length ? rules[0].action || "block" : "block";
-
-  for (const rule of rules || []) {
-    if (rule?.type === "domain") domainList.push(String(rule.value || "").trim());
-    if (rule?.type === "cidr") cidrList.push(String(rule.value || "").trim());
-  }
-
-  $("clientXrayDomains").value = domainList.join("\n");
-  $("clientXrayCidrs").value = cidrList.join("\n");
-  $("clientXrayAction").value = action;
+  const normalized = Array.isArray(rules) ? rules.filter((r) => r && String(r.value || "").trim()) : [];
+  renderClientXrayRules(normalized.length ? normalized : [{ type: "domain", value: "", action: "block" }]);
 }
 
 function setSourceSubItemsToForm(items = []) {
@@ -280,10 +330,10 @@ $("saveClientXrayRules").onclick = async () => {
   const id = clientSelect.value;
   if (!id) return setMessage("Выберите клиента", false);
 
-  const payload = getClientXrayRulesFromForm();
+  const rules = getClientXrayRulesFromForm();
   const r = await api(`/admin/clients/${id}/xray-rules`, {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ rules })
   });
   if (!r.ok) return setMessage(`Ошибка сохранения правил Xray: ${await safeErr(r)}`, false);
 
@@ -294,6 +344,12 @@ $("saveClientXrayRules").onclick = async () => {
     const updated = await client.json();
     setClientXrayRulesToForm(updated.xrayRules || []);
   }
+};
+
+$("addClientXrayRule").onclick = () => {
+  const list = $("clientXrayRulesList");
+  if (!list) return;
+  list.appendChild(createClientXrayRuleRow({ type: "domain", value: "", action: "block" }));
 };
 
 $("saveClientMaxDevices").onclick = async () => {
@@ -332,9 +388,7 @@ $("deleteClient").onclick = async () => {
 
   $("vlessLinks").value = "";
   $("customJson").value = "";
-  $("clientXrayDomains").value = "";
-  $("clientXrayCidrs").value = "";
-  $("clientXrayAction").value = "block";
+  setClientXrayRulesToForm([]);
   setSourceSubItemsToForm([]);
   renderDevices({ devices: [] });
   setMessage("Клиент удален");
