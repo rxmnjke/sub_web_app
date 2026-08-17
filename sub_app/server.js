@@ -8,8 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const ADMIN_UI_PATH = String(process.env.ADMIN_UI_PATH || "/admin-panel").replace(/\/+$/, "") || "/admin-panel";
+const ADMIN_UI_ROUTE = ADMIN_UI_PATH === "/" ? "/" : ADMIN_UI_PATH;
 app.use(express.json({ limit: "1mb" }));
-app.use("/admin-ui", express.static(path.join(__dirname, "public")));
+app.use(ADMIN_UI_ROUTE, express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = path.join(__dirname, "data", "clients.json");
@@ -20,6 +22,7 @@ const SUB_UPDATE_INTERVAL_HOURS = Number(process.env.SUB_UPDATE_INTERVAL_HOURS |
 const HWID_ENFORCE = String(process.env.HWID_ENFORCE || "true").toLowerCase() === "true";
 const HWID_MAX_DEVICES = Number(process.env.HWID_MAX_DEVICES || 2);
 const HWID_HEADER_NAME = String(process.env.HWID_HEADER_NAME || "x-hwid").toLowerCase();
+const MAX_CLIENT_XRAY_RULES = Number(process.env.MAX_CLIENT_XRAY_RULES || 20);
 const BROWSER_HWID_COOKIE = "sub_device_id";
 
 // in-memory cache: key=url, value={ expiresAt:number, text:string }
@@ -121,6 +124,15 @@ function normalizeMaxDevices(value, fallback = HWID_MAX_DEVICES) {
   if (!Number.isFinite(raw) || raw < 1) {
     const fallbackValue = Number(fallback);
     return Number.isFinite(fallbackValue) && fallbackValue > 0 ? Math.floor(fallbackValue) : 2;
+  }
+  return Math.floor(raw);
+}
+
+function normalizeRuleLimit(value, fallback = MAX_CLIENT_XRAY_RULES) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw < 1) {
+    const fallbackValue = Number(fallback);
+    return Number.isFinite(fallbackValue) && fallbackValue > 0 ? Math.floor(fallbackValue) : 20;
   }
   return Math.floor(raw);
 }
@@ -761,7 +773,11 @@ app.get("/admin/clients/:id", (req, res) => {
 app.get("/admin/settings", (req, res) => {
   const db = readDb();
   const subscriptionInfo = normalizeSubscriptionInfo(db.settings?.subscriptionInfo);
-  res.json({ subscriptionInfo, adminBroadcast: toLegacyAdminBroadcast(subscriptionInfo) });
+  res.json({
+    subscriptionInfo,
+    adminBroadcast: toLegacyAdminBroadcast(subscriptionInfo),
+    xrayRulesLimit: normalizeRuleLimit(MAX_CLIENT_XRAY_RULES)
+  });
 });
 
 app.post("/admin/settings/subscription-info", (req, res) => {
@@ -926,7 +942,14 @@ app.post("/admin/clients/:id/xray-rules", (req, res) => {
     ? rules
     : buildXrayRulesFromInput({ domains, cidrs, action });
 
-  client.xrayRules = normalizeXrayRules(normalizedRules);
+  const limited = normalizeXrayRules(normalizedRules);
+  if (limited.length > normalizeRuleLimit(MAX_CLIENT_XRAY_RULES)) {
+    return res.status(400).json({
+      error: `Too many Xray rules. Max allowed: ${normalizeRuleLimit(MAX_CLIENT_XRAY_RULES)}`
+    });
+  }
+
+  client.xrayRules = limited;
   client.updatedAt = new Date().toISOString();
   writeDb(db);
 

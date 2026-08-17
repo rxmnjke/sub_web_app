@@ -8,6 +8,7 @@ const MAX_SOURCE_SUBS = 5;
 const adminBroadcastMessage = $("adminBroadcastMessage");
 const adminBroadcastLinkUrl = $("adminBroadcastLinkUrl");
 const adminBroadcastPreview = $("adminBroadcastPreview");
+let xrayRulesLimit = 20;
 
 function api(path, options = {}) {
   return fetch(path, {
@@ -96,6 +97,7 @@ async function loadAdminBroadcastSettings() {
   const data = await r.json();
   const payload = data?.subscriptionInfo || data?.adminBroadcast || {};
 
+  xrayRulesLimit = Number(data?.xrayRulesLimit || 20);
   adminBroadcastMessage.value = payload.announce || payload.message || "";
   adminBroadcastLinkUrl.value = payload.supportUrl || payload.linkUrl || "";
   renderAdminBroadcastPreview(payload);
@@ -331,6 +333,10 @@ $("saveClientXrayRules").onclick = async () => {
   if (!id) return setMessage("Выберите клиента", false);
 
   const rules = getClientXrayRulesFromForm();
+  if (rules.length > xrayRulesLimit) {
+    return setMessage(`Слишком много правил. Максимум: ${xrayRulesLimit}`, false);
+  }
+
   const r = await api(`/admin/clients/${id}/xray-rules`, {
     method: "POST",
     body: JSON.stringify({ rules })
@@ -349,6 +355,13 @@ $("saveClientXrayRules").onclick = async () => {
 $("addClientXrayRule").onclick = () => {
   const list = $("clientXrayRulesList");
   if (!list) return;
+
+  const currentCount = list.querySelectorAll(".client-xray-rule-row").length;
+  if (currentCount >= xrayRulesLimit) {
+    setMessage(`Максимум ${xrayRulesLimit} правил для клиента`, false);
+    return;
+  }
+
   list.appendChild(createClientXrayRuleRow({ type: "domain", value: "", action: "block" }));
 };
 
