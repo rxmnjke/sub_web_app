@@ -1,9 +1,15 @@
 **Панель для формирования подписок из vless ключей или json конфигов**
 
-1. В .env файле прописать токен админа
+1. В корне создать .env файл с переменными окружения:
+```sh
+HWID_ENFORCE=true
+HWID_HEADER_NAME=x-hwid
+ADMIN_UI_PATH=</path_to_admin_panel> //Путь к веб панели (например /admin-panel)
+MAX_CLIENT_XRAY_RULES=<paste_max_client_xray_rules_here> //Максимальное количество правил xray для одного клиента (20 по умолчанию)
+```
 2. Получить через letsencrypt сертификаты для домена и положить их в папку certs
 3. Склонировать на VPS репозиторий
-4. Веб панель будет доступна по адресу https://domain-addr/admin-ui
+4. Веб панель будет доступна по адресу https://domain-addr/ADMIN_UI_PATH
 5. Установить basic auth для nginx:
 ```sh
 sudo apt-get update

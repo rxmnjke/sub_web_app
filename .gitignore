@@ -1,3 +1,4 @@
 /certs
 nginx/.htpasswd
 sub_app/data/clients.json
+.env
