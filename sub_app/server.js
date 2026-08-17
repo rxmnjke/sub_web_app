@@ -125,11 +125,121 @@ function normalizeMaxDevices(value, fallback = HWID_MAX_DEVICES) {
   return Math.floor(raw);
 }
 
+function normalizeXrayAction(value) {
+  const action = String(value || "").trim().toLowerCase();
+  return ["block", "direct", "tunnel"].includes(action) ? action : "block";
+}
+
+function normalizeXrayRule(rule = {}) {
+  const rawType = String(rule?.type || "").trim().toLowerCase();
+  const rawValue = String(rule?.value ?? rule?.domain ?? rule?.cidr ?? "").trim();
+  if (!rawValue) return null;
+
+  let type = rawType === "cidr" ? "cidr" : (rawType === "domain" ? "domain" : "");
+  if (!type) {
+    type = rawValue.includes("/") ? "cidr" : "domain";
+  }
+
+  const value = type === "cidr" ? rawValue : rawValue.replace(/^[a-z]+:/i, "").trim();
+  if (!value) return null;
+
+  if (type === "cidr") {
+    const cidrOk = /^(?:\d{1,3}\.){3}\d{1,3}\/\d{1,2}$|^(?:[0-9a-fA-F:]+\/\d{1,3})$/.test(value);
+    if (!cidrOk) return null;
+  }
+
+  return {
+    type,
+    value,
+    action: normalizeXrayAction(rule?.action)
+  };
+}
+
+function normalizeXrayRules(rawRules = []) {
+  const items = Array.isArray(rawRules) ? rawRules : [];
+  const out = [];
+  const seen = new Set();
+
+  for (const item of items) {
+    const rule = typeof item === "string" ? { value: item } : item;
+    const normalized = normalizeXrayRule(rule);
+    if (!normalized) continue;
+
+    const key = `${normalized.type}|${normalized.value}|${normalized.action}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+
+  return out;
+}
+
+function buildXrayRulesFromInput({ domains = [], cidrs = [], action = "block" } = {}) {
+  const normalizedAction = normalizeXrayAction(action);
+  const entries = [];
+
+  for (const value of Array.isArray(domains) ? domains : []) {
+    const item = String(value || "").trim();
+    if (!item) continue;
+    entries.push({ type: "domain", value: item, action: normalizedAction });
+  }
+
+  for (const value of Array.isArray(cidrs) ? cidrs : []) {
+    const item = String(value || "").trim();
+    if (!item) continue;
+    entries.push({ type: "cidr", value: item, action: normalizedAction });
+  }
+
+  return normalizeXrayRules(entries);
+}
+
+function applyClientXrayRules(template = {}, client = {}) {
+  if (!template || typeof template !== "object") return template;
+  if (!template.routing || typeof template.routing !== "object") template.routing = {};
+  if (!Array.isArray(template.routing.rules)) template.routing.rules = [];
+
+  const rules = normalizeXrayRules(client?.xrayRules || []);
+  if (!rules.length) return template;
+
+  const firstOutbound = Array.isArray(template.outbounds)
+    ? template.outbounds.find((entry) => entry && String(entry.tag || "").trim())
+    : null;
+  const firstOutboundTag = firstOutbound?.tag || "lo-out-1";
+
+  const extraRules = rules.map((rule) => {
+    const outboundTag = rule.action === "tunnel"
+      ? firstOutboundTag
+      : rule.action === "direct"
+        ? "direct"
+        : "block";
+
+    const normalized = {
+      type: "field",
+      outboundTag
+    };
+
+    if (rule.type === "domain") {
+      const domainValue = String(rule.value || "").trim();
+      const enriched = /^[A-Za-z]+:/.test(domainValue) ? domainValue : `domain:${domainValue}`;
+      normalized.domain = [enriched];
+    } else {
+      normalized.ip = [String(rule.value || "").trim()];
+    }
+
+    return normalized;
+  });
+
+  template.routing.rules = [...template.routing.rules, ...extraRules];
+  return template;
+}
+
 function normalizeClient(rawClient = {}) {
   const client = typeof rawClient === "object" && rawClient ? rawClient : {};
   if (!Array.isArray(client.devices)) client.devices = [];
   if (!Array.isArray(client.links)) client.links = [];
   if (!Array.isArray(client.sourceSubs)) client.sourceSubs = [];
+  if (!Array.isArray(client.xrayRules)) client.xrayRules = [];
+  client.xrayRules = normalizeXrayRules(client.xrayRules);
   client.maxDevices = normalizeMaxDevices(client.maxDevices, HWID_MAX_DEVICES);
   return client;
 }
@@ -508,6 +618,7 @@ async function collectLinksFromSubs(items = []) {
 
 function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}) {
   const template = deepClone(loadJsonTemplate());
+  if (opts?.client) applyClientXrayRules(template, opts.client);
 
   const parsed = [];
   const tagCount = new Map();
@@ -624,6 +735,7 @@ app.post("/admin/clients", (req, res) => {
     links: [],
     sourceSubs: [], // [{ url, country }]
     devices: [], // [{ hwid, firstSeenAt, lastSeenAt }]
+    xrayRules: [],
     maxDevices: normalizeMaxDevices(req.body?.maxDevices, HWID_MAX_DEVICES),
     customJson: null
   };
@@ -802,6 +914,24 @@ app.post("/admin/clients/:id/max-devices", (req, res) => {
   return res.json({ ok: true, maxDevices: client.maxDevices });
 });
 
+app.post("/admin/clients/:id/xray-rules", (req, res) => {
+  const { domains = [], cidrs = [], action = "block", rules = [] } = req.body || {};
+
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  const normalizedRules = Array.isArray(rules) && rules.length
+    ? rules
+    : buildXrayRulesFromInput({ domains, cidrs, action });
+
+  client.xrayRules = normalizeXrayRules(normalizedRules);
+  client.updatedAt = new Date().toISOString();
+  writeDb(db);
+
+  return res.json({ ok: true, xrayRules: client.xrayRules });
+});
+
 app.delete("/admin/clients/:id/devices/:hwid", (req, res) => {
   const db = readDb();
   const client = db.clients.find((c) => c.id === req.params.id);
@@ -881,7 +1011,8 @@ app.get("/sub/:token", async (req, res) => {
   for (const [country, links] of fetched.grouped.entries()) {
     const oneCountryGrouped = new Map([[country, links]]);
     const cfg = buildSubscriptionFromCountryGroups(oneCountryGrouped, [], {
-      remark: COUNTRY_LABELS[country] || country
+      remark: COUNTRY_LABELS[country] || country,
+      client
     });
     resultList.push(cfg);
   }

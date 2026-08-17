@@ -133,6 +133,38 @@ function getSourceSubItemsFromForm() {
   return items;
 }
 
+function getClientXrayRulesFromForm() {
+  const domains = $("clientXrayDomains").value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const cidrs = $("clientXrayCidrs").value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return {
+    domains,
+    cidrs,
+    action: $("clientXrayAction").value
+  };
+}
+
+function setClientXrayRulesToForm(rules = []) {
+  const domainList = [];
+  const cidrList = [];
+  const action = Array.isArray(rules) && rules.length ? rules[0].action || "block" : "block";
+
+  for (const rule of rules || []) {
+    if (rule?.type === "domain") domainList.push(String(rule.value || "").trim());
+    if (rule?.type === "cidr") cidrList.push(String(rule.value || "").trim());
+  }
+
+  $("clientXrayDomains").value = domainList.join("\n");
+  $("clientXrayCidrs").value = cidrList.join("\n");
+  $("clientXrayAction").value = action;
+}
+
 function setSourceSubItemsToForm(items = []) {
   for (let i = 1; i <= MAX_SOURCE_SUBS; i++) {
     $(`subUrl${i}`).value = "";
@@ -239,8 +271,29 @@ $("showClient").onclick = async () => {
   $("clientMaxDevices").value = Number(c.maxDevices) > 0 ? Number(c.maxDevices) : 2;
   $("vlessLinks").value = (c.links || []).join("\n");
   setSourceSubItemsToForm(c.sourceSubs || []);
+  setClientXrayRulesToForm(c.xrayRules || []);
   $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
   setMessage(`Клиент "${c.name}" загружен`);
+};
+
+$("saveClientXrayRules").onclick = async () => {
+  const id = clientSelect.value;
+  if (!id) return setMessage("Выберите клиента", false);
+
+  const payload = getClientXrayRulesFromForm();
+  const r = await api(`/admin/clients/${id}/xray-rules`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) return setMessage(`Ошибка сохранения правил Xray: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  setMessage(`Правила Xray сохранены: ${j.xrayRules.length}`);
+  const client = await api(`/admin/clients/${id}`);
+  if (client.ok) {
+    const updated = await client.json();
+    setClientXrayRulesToForm(updated.xrayRules || []);
+  }
 };
 
 $("saveClientMaxDevices").onclick = async () => {
@@ -279,6 +332,9 @@ $("deleteClient").onclick = async () => {
 
   $("vlessLinks").value = "";
   $("customJson").value = "";
+  $("clientXrayDomains").value = "";
+  $("clientXrayCidrs").value = "";
+  $("clientXrayAction").value = "block";
   setSourceSubItemsToForm([]);
   renderDevices({ devices: [] });
   setMessage("Клиент удален");
