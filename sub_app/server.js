@@ -207,16 +207,7 @@ function applyClientXrayRules(template = {}, client = {}) {
   const firstOutboundTag = firstOutbound?.tag || "lo-out-1";
 
   const extraRules = rules.map((rule) => {
-    const outboundTag = rule.action === "tunnel"
-      ? firstOutboundTag
-      : rule.action === "direct"
-        ? "direct"
-        : "block";
-
-    const normalized = {
-      type: "field",
-      outboundTag
-    };
+    const normalized = { type: "field" };
 
     if (rule.type === "domain") {
       const domainValue = String(rule.value || "").trim();
@@ -226,10 +217,20 @@ function applyClientXrayRules(template = {}, client = {}) {
       normalized.ip = [String(rule.value || "").trim()];
     }
 
+    if (rule.action === "direct") {
+      normalized.outboundTag = "direct";
+    } else if (rule.action === "block") {
+      normalized.outboundTag = "block";
+    } else if (rule.type === "domain") {
+      normalized.balancerTag = "primary";
+    } else {
+      normalized.outboundTag = firstOutboundTag;
+    }
+
     return normalized;
   });
 
-  template.routing.rules = [...template.routing.rules, ...extraRules];
+  template.routing.rules = [...extraRules, ...template.routing.rules];
   return template;
 }
 
