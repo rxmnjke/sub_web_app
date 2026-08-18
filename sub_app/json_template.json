@@ -114,7 +114,8 @@
           "domain:moengage.com",
           "domain:mindbox.ru",
           "domain:api.vk.ru",
-          "domain:2ip.io"
+          "domain:2ip.io",
+          "domain:edna.io"
         ],
         "outboundTag": "direct"
       },
