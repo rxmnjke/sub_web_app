@@ -108,7 +108,13 @@
           "domain:4pda.to",
           "domain:avito.st",
           "domain:emias.info",
-          "domain:digital.uni.rest"
+          "domain:digital.uni.rest",
+          "domain:mosmetro.tech",
+          "domain:appsflyersdk.com",
+          "domain:moengage.com",
+          "domain:mindbox.ru",
+          "domain:api.vk.ru",
+          "domain:2ip.io"
         ],
         "outboundTag": "direct"
       },
