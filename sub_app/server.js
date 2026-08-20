@@ -119,6 +119,24 @@ function toLegacyAdminBroadcast(subscriptionInfo = {}) {
   };
 }
 
+function normalizeClientName(value) {
+  return String(value ?? "").trim();
+}
+
+function ensureClientNameAvailable(db, name, excludeId = null) {
+  const normalized = normalizeClientName(name);
+  if (!normalized) return { error: "name is required" };
+
+  const duplicate = db.clients.some((client) => {
+    if (client.id === excludeId) return false;
+    return normalizeClientName(client.name).toLowerCase() === normalized.toLowerCase();
+  });
+
+  if (duplicate) return { error: "Client name is already in use" };
+
+  return { name: normalized };
+}
+
 function normalizeMaxDevices(value, fallback = HWID_MAX_DEVICES) {
   const raw = Number(value);
   if (!Number.isFinite(raw) || raw < 1) {
@@ -733,15 +751,16 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 // Admin API
 app.post("/admin/clients", (req, res) => {
   const { name } = req.body || {};
-  if (!name) return res.status(400).json({ error: "name is required" });
-
   const db = readDb();
+  const validation = ensureClientNameAvailable(db, name);
+  if (validation.error) return res.status(validation.error === "name is required" ? 400 : 409).json({ error: validation.error });
+
   const id = crypto.randomUUID();
   const token = randToken();
 
   const client = {
     id,
-    name,
+    name: validation.name,
     token,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -768,6 +787,22 @@ app.get("/admin/clients/:id", (req, res) => {
   const client = db.clients.find((c) => c.id === req.params.id);
   if (!client) return res.status(404).json({ error: "Client not found" });
   res.json(client);
+});
+
+app.post("/admin/clients/:id/rename", (req, res) => {
+  const { name } = req.body || {};
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  const validation = ensureClientNameAvailable(db, name, client.id);
+  if (validation.error) return res.status(validation.error === "name is required" ? 400 : 409).json({ error: validation.error });
+
+  client.name = validation.name;
+  client.updatedAt = new Date().toISOString();
+  writeDb(db);
+
+  return res.json({ ok: true, id: client.id, name: client.name });
 });
 
 app.get("/admin/settings", (req, res) => {
@@ -1045,6 +1080,10 @@ app.get("/sub/:token", async (req, res) => {
   res.send(JSON.stringify(resultList, null, 2));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server started on :${PORT}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  app.listen(PORT, () => {
+    console.log(`Server started on :${PORT}`);
+  });
+}
+
+export { app };

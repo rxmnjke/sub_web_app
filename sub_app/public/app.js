@@ -48,12 +48,23 @@ function escapeHtml(s) {
 }
 
 function fillSelect(clients) {
+  const previousValue = clientSelect.value;
   clientSelect.innerHTML = "";
+
   for (const c of clients) {
     const opt = document.createElement("option");
     opt.value = c.id;
     opt.textContent = `${c.name} (${c.id})`;
     clientSelect.appendChild(opt);
+  }
+
+  if (clients.some((c) => c.id === previousValue)) {
+    clientSelect.value = previousValue;
+    return;
+  }
+
+  if (clients.length) {
+    clientSelect.value = clients[0].id;
   }
 }
 
@@ -321,11 +332,31 @@ $("showClient").onclick = async () => {
   const c = await r.json();
   renderDevices(c);
   $("clientMaxDevices").value = Number(c.maxDevices) > 0 ? Number(c.maxDevices) : 2;
+  $("renameClientName").value = c.name || "";
   $("vlessLinks").value = (c.links || []).join("\n");
   setSourceSubItemsToForm(c.sourceSubs || []);
   setClientXrayRulesToForm(c.xrayRules || []);
   $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
   setMessage(`Клиент "${c.name}" загружен`);
+};
+
+$("renameClient").onclick = async () => {
+  const id = clientSelect.value;
+  if (!id) return setMessage("Выберите клиента", false);
+
+  const name = $("renameClientName").value.trim();
+  if (!name) return setMessage("Введите новое имя клиента", false);
+
+  const r = await api(`/admin/clients/${id}/rename`, {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+  if (!r.ok) return setMessage(`Ошибка переименования: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  $("renameClientName").value = j.name;
+  setMessage(`Клиент переименован: ${j.name}`);
+  await loadClients();
 };
 
 $("saveClientXrayRules").onclick = async () => {
