@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 const msg = $("msg");
 const clientsTbody = $("clientsTbody");
 const clientSelect = $("clientSelect");
-const MAX_SOURCE_SUBS = 5;
+const MAX_SOURCE_SUBS = 6;
 
 const adminBroadcastMessage = $("adminBroadcastMessage");
 const adminBroadcastLinkUrl = $("adminBroadcastLinkUrl");

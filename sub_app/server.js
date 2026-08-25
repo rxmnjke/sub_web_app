@@ -34,7 +34,8 @@ const COUNTRY_LABELS = {
   germany2: "🇩🇪 Германия 2",
   denmark: "🇩🇰 Дания",
   denmark2: "🇩🇰 Дания 2",
-  netherlands: "🇳🇱 Нидерланды"
+  netherlands: "🇳🇱 Нидерланды",
+  cascade: "🇷🇺 Каскадный обход"
 };
 
 function normalizeSourceSubs(items = []) {
@@ -43,7 +44,8 @@ function normalizeSourceSubs(items = []) {
     const url = String(it?.url || "").trim();
     const country = String(it?.country || "").trim().toLowerCase();
     if (!url) continue;
-    if (!["germany", "germany2", "denmark", "denmark2", "netherlands"].includes(country)) continue;
+
+    if (!["germany", "germany2", "denmark", "denmark2", "netherlands", "cascade"].includes(country)) continue;
     try {
       const p = new URL(url);
       if (!["http:", "https:"].includes(p.protocol)) continue;
