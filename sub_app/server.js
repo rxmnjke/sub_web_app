@@ -30,7 +30,7 @@ const subCache = new Map();
 
 // helper
 const COUNTRY_LABELS = {
-  germany: "🇩🇪 Германия (youtube без рекламы)",
+  germany: "🇩🇪 Германия",
   germany2: "🇩🇪 Германия 2",
   denmark: "🇩🇰 Дания",
   denmark2: "🇩🇰 Дания 2",
