@@ -141,12 +141,6 @@ function buildHappRoutingHeaderValue(geoFiles = {}) {
   const profile = {
     Name: "vpsochka",
     GlobalProxy: "true",
-    RemoteDNSType: "DoH",
-    RemoteDNSDomain: "https://cloudflare-dns.com/dns-query",
-    RemoteDNSIP: "1.1.1.1",
-    DomesticDNSType: "DoH",
-    DomesticDNSDomain: "https://dns.google/dns-query",
-    DomesticDNSIP: "8.8.8.8",
     Geoipurl: normalized.geoipUrl,
     Geositeurl: normalized.geositeUrl,
     DnsHosts: {},
@@ -154,7 +148,7 @@ function buildHappRoutingHeaderValue(geoFiles = {}) {
     DirectIp: [],
     ProxySites: [],
     ProxyIp: [],
-    BlockSites: ["geosite:category-ads-all"],
+    BlockSites: [],
     BlockIp: [],
     DomainStrategy: "IPIfNonMatch",
     FakeDNS: "false"
