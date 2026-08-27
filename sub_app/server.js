@@ -139,7 +139,7 @@ function normalizeGeoFilesSettings() {
 function buildHappRoutingHeaderValue(geoFiles = {}) {
   const normalized = normalizeGeoFilesSettings(geoFiles);
   const profile = {
-    Name: "AutoGeo",
+    Name: "vpsochka",
     GlobalProxy: "true",
     RemoteDNSType: "DoH",
     RemoteDNSDomain: "https://cloudflare-dns.com/dns-query",
@@ -154,7 +154,7 @@ function buildHappRoutingHeaderValue(geoFiles = {}) {
     DirectIp: [],
     ProxySites: [],
     ProxyIp: [],
-    BlockSites: [],
+    BlockSites: ["geosite:category-ads-all"],
     BlockIp: [],
     DomainStrategy: "IPIfNonMatch",
     FakeDNS: "false"
