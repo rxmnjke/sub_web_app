@@ -24,6 +24,14 @@ const HWID_MAX_DEVICES = Number(process.env.HWID_MAX_DEVICES || 2);
 const HWID_HEADER_NAME = String(process.env.HWID_HEADER_NAME || "x-hwid").toLowerCase();
 const MAX_CLIENT_XRAY_RULES = Number(process.env.MAX_CLIENT_XRAY_RULES || 20);
 const BROWSER_HWID_COOKIE = "sub_device_id";
+const HAPP_DEFAULT_GEOIP_URL = String(
+  process.env.HAPP_DEFAULT_GEOIP_URL ||
+    "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
+);
+const HAPP_DEFAULT_GEOSITE_URL = String(
+  process.env.HAPP_DEFAULT_GEOSITE_URL ||
+    "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+);
 
 // in-memory cache: key=url, value={ expiresAt:number, text:string }
 const subCache = new Map();
@@ -78,6 +86,11 @@ function ensureDataFile() {
             subscriptionInfo: {
               announce: "",
               supportUrl: ""
+            },
+            geoFiles: {
+              enabled: true,
+              geoipUrl: "",
+              geositeUrl: ""
             }
           }
         },
@@ -110,6 +123,45 @@ function normalizeSubscriptionInfo(input = {}) {
     announce,
     supportUrl
   };
+}
+
+function normalizeGeoFilesSettings() {
+  // always on; source is hardcoded to Loyalsoldier and not user-configurable
+  return {
+    enabled: true,
+    geoipUrl: HAPP_DEFAULT_GEOIP_URL,
+    geositeUrl: HAPP_DEFAULT_GEOSITE_URL
+  };
+}
+
+// Happ-family clients (Happ/Hiddify) fetch geoip/geosite dat files in the background
+// when the subscription response carries a `routing` header with a happ://routing/onadd/ link.
+function buildHappRoutingHeaderValue(geoFiles = {}) {
+  const normalized = normalizeGeoFilesSettings(geoFiles);
+  const profile = {
+    Name: "AutoGeo",
+    GlobalProxy: "true",
+    RemoteDNSType: "DoH",
+    RemoteDNSDomain: "https://cloudflare-dns.com/dns-query",
+    RemoteDNSIP: "1.1.1.1",
+    DomesticDNSType: "DoH",
+    DomesticDNSDomain: "https://dns.google/dns-query",
+    DomesticDNSIP: "8.8.8.8",
+    Geoipurl: normalized.geoipUrl,
+    Geositeurl: normalized.geositeUrl,
+    DnsHosts: {},
+    DirectSites: [],
+    DirectIp: [],
+    ProxySites: [],
+    ProxyIp: [],
+    BlockSites: [],
+    BlockIp: [],
+    DomainStrategy: "IPIfNonMatch",
+    FakeDNS: "false"
+  };
+
+  const encoded = Buffer.from(JSON.stringify(profile), "utf8").toString("base64");
+  return `happ://routing/onadd/${encoded}`;
 }
 
 function toLegacyAdminBroadcast(subscriptionInfo = {}) {
@@ -291,6 +343,7 @@ function normalizeDbShape(rawDb = {}) {
     supportUrl: modern.supportUrl || legacy.linkUrl
   });
   db.settings.adminBroadcast = toLegacyAdminBroadcast(db.settings.subscriptionInfo);
+  db.settings.geoFiles = normalizeGeoFilesSettings();
 
   return db;
 }
@@ -745,6 +798,8 @@ function applySubscriptionHeaders(res, req, subscriptionInfo = {}, client = null
   if (normalized.supportUrl) {
     res.setHeader("Support-Url", normalized.supportUrl);
   }
+
+  res.setHeader("routing", buildHappRoutingHeaderValue(normalizeGeoFilesSettings()));
 }
 
 // Health
@@ -813,6 +868,7 @@ app.get("/admin/settings", (req, res) => {
   res.json({
     subscriptionInfo,
     adminBroadcast: toLegacyAdminBroadcast(subscriptionInfo),
+    geoFiles: normalizeGeoFilesSettings(),
     xrayRulesLimit: normalizeRuleLimit(MAX_CLIENT_XRAY_RULES)
   });
 });
