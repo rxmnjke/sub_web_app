@@ -163,6 +163,11 @@
       },
       {
         "type": "field",
+        "domain": ["geosite:category-ads-all"],
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
         "ip": [
           "127.0.0.0/8",
           "10.0.0.0/8",
@@ -1131,11 +1136,6 @@
           "213.180.192.0/19"
         ],
         "outboundTag": "direct"
-      },
-      {
-        "type": "field",
-        "domain": ["geosite:category-ads-all"],
-        "outboundTag": "block"
       },
       {
         "type": "field",
