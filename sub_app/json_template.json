@@ -1134,6 +1134,11 @@
       },
       {
         "type": "field",
+        "domain": ["geosite:category-ads-all"],
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
         "inboundTag": [
           "lo-in-1"
         ],
