@@ -4,6 +4,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { buildSubscriptionFromCountryGroups } from "../server.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.join(__dirname, "..", "data", "clients.json");
@@ -83,4 +85,18 @@ test("rename rejects duplicate names and accepts unique rename", async () => {
   });
   assert.equal(goodRename.res.status, 200, `rename should succeed: ${JSON.stringify(goodRename.json)}`);
   assert.equal(goodRename.json.name, "Charlie");
+});
+
+test("client with ad blocking adds geosite rule into generated config", () => {
+  const grouped = new Map([["germany", ["vless://4ec4d10d-f31a-41e5-bb9f-1a32f9f1e0f1@example.com:443?type=tcp&security=none"]]]);
+
+  const cfg = buildSubscriptionFromCountryGroups(grouped, [], {
+    client: { blockAds: true }
+  });
+
+  assert.ok(Array.isArray(cfg.routing?.rules), "routing.rules should exist");
+  assert.ok(
+    cfg.routing.rules.some((rule) => rule.type === "field" && rule.outboundTag === "block" && Array.isArray(rule.domain) && rule.domain.includes("geosite:category-ads-all")),
+    "geosite ads rule must be injected when ad blocking is enabled"
+  );
 });

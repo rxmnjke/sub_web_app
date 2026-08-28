@@ -332,6 +332,7 @@ $("showClient").onclick = async () => {
   const c = await r.json();
   renderDevices(c);
   $("clientMaxDevices").value = Number(c.maxDevices) > 0 ? Number(c.maxDevices) : 2;
+  $("clientBlockAds").checked = Boolean(c.blockAds);
   $("renameClientName").value = c.name || "";
   $("vlessLinks").value = (c.links || []).join("\n");
   setSourceSubItemsToForm(c.sourceSubs || []);
@@ -419,6 +420,22 @@ $("saveClientMaxDevices").onclick = async () => {
     renderDevices(updated);
   }
   setMessage(`Лимит устройств сохранён: ${j.maxDevices}`);
+};
+
+$("saveClientBlockAds").onclick = async () => {
+  const id = clientSelect.value;
+  if (!id) return setMessage("Выберите клиента", false);
+
+  const blockAds = $("clientBlockAds").checked;
+  const r = await api(`/admin/clients/${id}/block-ads`, {
+    method: "POST",
+    body: JSON.stringify({ blockAds })
+  });
+  if (!r.ok) return setMessage(`Ошибка сохранения настройки рекламы: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  $("clientBlockAds").checked = Boolean(j.blockAds);
+  setMessage(`Блокировка рекламы: ${j.blockAds ? "включена" : "выключена"}`);
 };
 
 $("deleteClient").onclick = async () => {

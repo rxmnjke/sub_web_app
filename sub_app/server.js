@@ -271,6 +271,29 @@ function buildXrayRulesFromInput({ domains = [], cidrs = [], action = "block" } 
   return normalizeXrayRules(entries);
 }
 
+function applyClientAdBlockRule(template = {}, client = {}) {
+  if (!template || typeof template !== "object") return template;
+  if (!template.routing || typeof template.routing !== "object") template.routing = {};
+  if (!Array.isArray(template.routing.rules)) template.routing.rules = [];
+  if (!client?.blockAds) return template;
+
+  const hasAdsRule = template.routing.rules.some((rule) => {
+    if (!rule || rule.type !== "field") return false;
+    const domains = Array.isArray(rule.domain) ? rule.domain : [];
+    return domains.includes("geosite:category-ads-all");
+  });
+
+  if (hasAdsRule) return template;
+
+  template.routing.rules.unshift({
+    type: "field",
+    domain: ["geosite:category-ads-all"],
+    outboundTag: "block"
+  });
+
+  return template;
+}
+
 function applyClientXrayRules(template = {}, client = {}) {
   if (!template || typeof template !== "object") return template;
   if (!template.routing || typeof template.routing !== "object") template.routing = {};
@@ -320,6 +343,7 @@ function normalizeClient(rawClient = {}) {
   if (!Array.isArray(client.xrayRules)) client.xrayRules = [];
   client.xrayRules = normalizeXrayRules(client.xrayRules);
   client.maxDevices = normalizeMaxDevices(client.maxDevices, HWID_MAX_DEVICES);
+  client.blockAds = Boolean(client.blockAds);
   return client;
 }
 
@@ -698,7 +722,10 @@ async function collectLinksFromSubs(items = []) {
 
 function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}) {
   const template = deepClone(loadJsonTemplate());
-  if (opts?.client) applyClientXrayRules(template, opts.client);
+  if (opts?.client) {
+    applyClientAdBlockRule(template, opts.client);
+    applyClientXrayRules(template, opts.client);
+  }
 
   const parsed = [];
   const tagCount = new Map();
@@ -820,6 +847,7 @@ app.post("/admin/clients", (req, res) => {
     devices: [], // [{ hwid, firstSeenAt, lastSeenAt }]
     xrayRules: [],
     maxDevices: normalizeMaxDevices(req.body?.maxDevices, HWID_MAX_DEVICES),
+    blockAds: Boolean(req.body?.blockAds),
     customJson: null
   };
 
@@ -1016,6 +1044,20 @@ app.post("/admin/clients/:id/max-devices", (req, res) => {
   writeDb(db);
 
   return res.json({ ok: true, maxDevices: client.maxDevices });
+});
+
+app.post("/admin/clients/:id/block-ads", (req, res) => {
+  const { blockAds = false } = req.body || {};
+
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  client.blockAds = Boolean(blockAds);
+  client.updatedAt = new Date().toISOString();
+  writeDb(db);
+
+  return res.json({ ok: true, blockAds: client.blockAds });
 });
 
 app.post("/admin/clients/:id/xray-rules", (req, res) => {
