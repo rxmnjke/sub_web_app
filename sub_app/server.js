@@ -2,7 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +14,11 @@ app.use(express.json({ limit: "1mb" }));
 app.use(ADMIN_UI_ROUTE, express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
-const DATA_FILE = path.join(__dirname, "data", "clients.json");
+const DATA_DIR = path.join(__dirname, "data");
+const GEO_FILES_DIR = path.join(DATA_DIR, "geo");
+const GEOIP_FILE = path.join(GEO_FILES_DIR, "geoip.dat");
+const GEOSITE_FILE = path.join(GEO_FILES_DIR, "geosite.dat");
+const DATA_FILE = path.join(DATA_DIR, "clients.json");
 const JSON_TEMPLATE_FILE = path.join(__dirname, "json_template.json");
 const SUB_FETCH_TIMEOUT_MS = Number(process.env.SUB_FETCH_TIMEOUT_MS || 8000);
 const SUB_CACHE_TTL_MS = Number(process.env.SUB_CACHE_TTL_MS || 120000); // 120 sec
@@ -125,12 +129,28 @@ function normalizeSubscriptionInfo(input = {}) {
   };
 }
 
+function ensureGeoFilesDir() {
+  if (!fs.existsSync(GEO_FILES_DIR)) fs.mkdirSync(GEO_FILES_DIR, { recursive: true });
+}
+
+function resolveGeoFileSource(remoteUrl = "", localFilePath = "") {
+  const url = String(remoteUrl || "").trim();
+  if (!url && !localFilePath) return "";
+
+  ensureGeoFilesDir();
+  if (localFilePath && fs.existsSync(localFilePath)) {
+    return pathToFileURL(localFilePath).href;
+  }
+
+  return url;
+}
+
 function normalizeGeoFilesSettings() {
-  // always on; source is hardcoded to Loyalsoldier and not user-configurable
+  // prefer already-downloaded local files to avoid repeated network fetches
   return {
     enabled: true,
-    geoipUrl: HAPP_DEFAULT_GEOIP_URL,
-    geositeUrl: HAPP_DEFAULT_GEOSITE_URL
+    geoipUrl: resolveGeoFileSource(HAPP_DEFAULT_GEOIP_URL, GEOIP_FILE),
+    geositeUrl: resolveGeoFileSource(HAPP_DEFAULT_GEOSITE_URL, GEOSITE_FILE)
   };
 }
 
@@ -1180,4 +1200,4 @@ if (process.env.NODE_ENV !== "test") {
   });
 }
 
-export { app };
+export { app, normalizeGeoFilesSettings, buildHappRoutingHeaderValue };

@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import { buildSubscriptionFromCountryGroups } from "../server.js";
+import { buildSubscriptionFromCountryGroups, normalizeGeoFilesSettings } from "../server.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,4 +99,16 @@ test("client with ad blocking adds geosite rule into generated config", () => {
     cfg.routing.rules.some((rule) => rule.type === "field" && rule.outboundTag === "block" && Array.isArray(rule.domain) && rule.domain.includes("geosite:category-ads-all")),
     "geosite ads rule must be injected when ad blocking is enabled"
   );
+});
+
+test("local geo files are preferred over remote URLs", () => {
+  const geoDir = path.join(__dirname, "..", "data", "geo");
+  fs.mkdirSync(geoDir, { recursive: true });
+  fs.writeFileSync(path.join(geoDir, "geoip.dat"), "geoip-local");
+  fs.writeFileSync(path.join(geoDir, "geosite.dat"), "geosite-local");
+
+  const settings = normalizeGeoFilesSettings();
+
+  assert.match(settings.geoipUrl, /^file:\/\//, "existing geoip file should resolve to local file URL");
+  assert.match(settings.geositeUrl, /^file:\/\//, "existing geosite file should resolve to local file URL");
 });
