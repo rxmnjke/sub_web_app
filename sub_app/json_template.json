@@ -6,7 +6,7 @@
   "dns": {
     "servers": [
       {
-        "address": "https+local://77.88.8.8/dns-query",
+        "address": "tls://77.88.8.8",
         "domains": [
           "regexp:.*\\.ru$",
           "regexp:.*\\.su$"
@@ -14,7 +14,7 @@
         "queryStrategy": "UseIPv4"
       },
       {
-        "address": "https+local://1.1.1.1/dns-query",
+        "address": "tls://1.1.1.1",
         "queryStrategy": "UseIPv4"
       }
     ],
