@@ -355,13 +355,32 @@ function applyClientXrayRules(template = {}, client = {}) {
   return template;
 }
 
+function normalizeExternalSub(sub = {}) {
+  const s = typeof sub === "object" && sub ? sub : {};
+  return {
+    id: String(s.id || ""),
+    url: String(s.url || ""),
+    configs: Array.isArray(s.configs) ? s.configs : [],
+    updatedAt: String(s.updatedAt || "")
+  };
+}
+
+function normalizeExternalConfigRefs(refs = []) {
+  const items = Array.isArray(refs) ? refs : [];
+  return items
+    .filter((r) => r && r.subId && Number.isInteger(r.index) && r.index >= 0)
+    .map((r) => ({ subId: String(r.subId), index: Number(r.index) }));
+}
+
 function normalizeClient(rawClient = {}) {
   const client = typeof rawClient === "object" && rawClient ? rawClient : {};
   if (!Array.isArray(client.devices)) client.devices = [];
   if (!Array.isArray(client.links)) client.links = [];
   if (!Array.isArray(client.sourceSubs)) client.sourceSubs = [];
   if (!Array.isArray(client.xrayRules)) client.xrayRules = [];
+  if (!Array.isArray(client.externalConfigRefs)) client.externalConfigRefs = [];
   client.xrayRules = normalizeXrayRules(client.xrayRules);
+  client.externalConfigRefs = normalizeExternalConfigRefs(client.externalConfigRefs);
   client.maxDevices = normalizeMaxDevices(client.maxDevices, HWID_MAX_DEVICES);
   client.blockAds = Boolean(client.blockAds);
   return client;
@@ -371,6 +390,8 @@ function normalizeDbShape(rawDb = {}) {
   const db = typeof rawDb === "object" && rawDb ? rawDb : {};
   if (!Array.isArray(db.clients)) db.clients = [];
   db.clients = db.clients.map(normalizeClient);
+  if (!Array.isArray(db.externalSubs)) db.externalSubs = [];
+  db.externalSubs = db.externalSubs.map(normalizeExternalSub);
   if (!db.settings || typeof db.settings !== "object") db.settings = {};
 
   const legacy = db.settings.adminBroadcast || {};
@@ -1095,7 +1116,18 @@ app.post("/admin/clients/:id/preview-merged-links", async (req, res) => {
   });
 });
 
-app.post("/admin/parse-external-sub", async (req, res) => {
+app.get("/admin/external-subs", (req, res) => {
+  const db = readDb();
+  const list = db.externalSubs.map((sub) => ({
+    id: sub.id,
+    url: sub.url,
+    updatedAt: sub.updatedAt,
+    configs: sub.configs.map((cfg) => ({ index: cfg.index, remarks: cfg.remarks }))
+  }));
+  res.json(list);
+});
+
+app.post("/admin/external-subs", async (req, res) => {
   const url = String(req.body?.url || "").trim();
   if (!url) return res.status(400).json({ error: "url is required" });
 
@@ -1107,34 +1139,103 @@ app.post("/admin/parse-external-sub", async (req, res) => {
 
   try {
     const configs = await fetchExternalHappSub(url);
-    const list = configs.map((cfg, index) => ({
-      index,
-      remarks: String(cfg?.remarks || `Config ${index + 1}`),
-      config: cfg
-    }));
-    res.json({ ok: true, total: list.length, configs: list });
+    const db = readDb();
+    const sub = {
+      id: crypto.randomUUID(),
+      url,
+      configs: configs.map((cfg, index) => ({
+        index,
+        remarks: String(cfg?.remarks || `Config ${index + 1}`),
+        config: cfg
+      })),
+      updatedAt: new Date().toISOString()
+    };
+    db.externalSubs.push(sub);
+    writeDb(db);
+    res.json({
+      ok: true,
+      sub: {
+        id: sub.id,
+        url: sub.url,
+        updatedAt: sub.updatedAt,
+        configs: sub.configs.map((c) => ({ index: c.index, remarks: c.remarks }))
+      }
+    });
   } catch (e) {
     res.status(502).json({ error: String(e?.message || e || "fetch failed") });
   }
 });
 
-app.post("/admin/clients/:id/import-external-configs", (req, res) => {
-  const configs = req.body?.configs;
-  if (!Array.isArray(configs) || !configs.length) {
-    return res.status(400).json({ error: "configs must be a non-empty array" });
+app.delete("/admin/external-subs/:id", (req, res) => {
+  const db = readDb();
+  const subId = req.params.id;
+  db.externalSubs = db.externalSubs.filter((s) => s.id !== subId);
+
+  for (const client of db.clients) {
+    client.externalConfigRefs = client.externalConfigRefs.filter((r) => r.subId !== subId);
+  }
+
+  writeDb(db);
+  res.json({ ok: true });
+});
+
+app.post("/admin/external-subs/parse-all", async (req, res) => {
+  const db = readDb();
+  const results = [];
+
+  for (const sub of db.externalSubs) {
+    try {
+      const configs = await fetchExternalHappSub(sub.url);
+      sub.configs = configs.map((cfg, index) => ({
+        index,
+        remarks: String(cfg?.remarks || `Config ${index + 1}`),
+        config: cfg
+      }));
+      sub.updatedAt = new Date().toISOString();
+      results.push({ id: sub.id, ok: true, total: sub.configs.length });
+    } catch (e) {
+      results.push({ id: sub.id, ok: false, error: String(e?.message || e || "fetch failed") });
+    }
+  }
+
+  writeDb(db);
+  res.json({ ok: true, results });
+});
+
+app.get("/admin/clients/:id/external-configs", (req, res) => {
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  const resolved = client.externalConfigRefs.map((ref) => {
+    const sub = db.externalSubs.find((s) => s.id === ref.subId);
+    const cfg = sub?.configs.find((c) => c.index === ref.index);
+    return {
+      subId: ref.subId,
+      index: ref.index,
+      url: sub?.url || "",
+      remarks: cfg?.remarks || "Unknown"
+    };
+  });
+
+  res.json({ ok: true, refs: resolved });
+});
+
+app.post("/admin/clients/:id/external-configs", (req, res) => {
+  const refs = req.body?.refs;
+  if (!Array.isArray(refs)) {
+    return res.status(400).json({ error: "refs must be an array" });
   }
 
   const db = readDb();
   const client = db.clients.find((c) => c.id === req.params.id);
   if (!client) return res.status(404).json({ error: "Client not found" });
 
-  client.customJson = configs.length === 1 ? configs[0] : configs;
-  client.links = [];
-  client.sourceSubs = [];
+  client.externalConfigRefs = normalizeExternalConfigRefs(refs);
   client.updatedAt = new Date().toISOString();
-
   writeDb(db);
-  res.json({ ok: true, count: configs.length, mode: "customJson" });
+
+  res.json({ ok: true, refs: client.externalConfigRefs });
 });
 
 app.post("/admin/clients/:id/max-devices", (req, res) => {
@@ -1258,14 +1359,18 @@ app.get("/sub/:token", async (req, res) => {
     writeDb(db);
   }
 
-  if (client.customJson) {
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    return res.send(JSON.stringify(client.customJson, null, 2));
-  }
-
   const fetched = await collectLinksFromSubs(client.sourceSubs || []);
 
   const resultList = [];
+
+  if (client.customJson) {
+    if (Array.isArray(client.customJson)) {
+      resultList.push(...client.customJson.map(deepClone));
+    } else {
+      resultList.push(deepClone(client.customJson));
+    }
+  }
+
   for (const [country, links] of fetched.grouped.entries()) {
     const oneCountryGrouped = new Map([[country, links]]);
     const cfg = buildSubscriptionFromCountryGroups(oneCountryGrouped, [], {
@@ -1273,6 +1378,12 @@ app.get("/sub/:token", async (req, res) => {
       client
     });
     resultList.push(cfg);
+  }
+
+  for (const ref of client.externalConfigRefs || []) {
+    const sub = db.externalSubs.find((s) => s.id === ref.subId);
+    const cfg = sub?.configs.find((c) => c.index === ref.index);
+    if (cfg?.config) resultList.push(deepClone(cfg.config));
   }
 
   res.setHeader("Content-Type", "application/json; charset=utf-8");

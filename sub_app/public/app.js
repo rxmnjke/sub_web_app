@@ -129,6 +129,7 @@ function renderClients(clients) {
       <td>${maxDevices}</td>
       <td>${Array.isArray(c.links) ? c.links.length : 0}</td>
       <td>${Array.isArray(c.sourceSubs) ? c.sourceSubs.length : 0}</td>
+      <td>${Array.isArray(c.externalConfigRefs) ? c.externalConfigRefs.length : 0}</td>
       <td class="small"><a href="${subUrl}" target="_blank">${subUrl}</a></td>
     `;
     clientsTbody.appendChild(tr);
@@ -338,6 +339,7 @@ $("showClient").onclick = async () => {
   setSourceSubItemsToForm(c.sourceSubs || []);
   setClientXrayRulesToForm(c.xrayRules || []);
   $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
+  await loadClientExternalConfigs(c.id);
   setMessage(`Клиент "${c.name}" загружен`);
 };
 
@@ -510,31 +512,132 @@ $("previewMerged").onclick = async () => {
   );
 };
 
-let parsedExternalConfigs = [];
+let externalSubsCache = [];
 
-$("parseExternalSub").onclick = async () => {
+function renderExternalSubsList() {
+  const container = $("externalSubsList");
+  if (!externalSubsCache.length) {
+    container.innerHTML = '<div class="muted">Подписки не добавлены</div>';
+    return;
+  }
+
+  container.innerHTML = externalSubsCache
+    .map(
+      (sub) => `
+      <div class="row" style="align-items: center; margin-top: 6px;">
+        <span class="muted" style="flex: 1;">${escapeHtml(sub.url)}</span>
+        <span class="muted">${sub.configs.length} конфигов</span>
+        <button type="button" class="danger external-sub-delete" data-sub-id="${escapeHtml(
+          sub.id
+        )}">Удалить</button>
+      </div>
+    `
+    )
+    .join("");
+
+  container.querySelectorAll(".external-sub-delete").forEach((btn) => {
+    btn.onclick = async () => {
+      const subId = btn.getAttribute("data-sub-id");
+      const r = await api(`/admin/external-subs/${subId}`, { method: "DELETE" });
+      if (!r.ok) return setMessage(`Ошибка удаления: ${await safeErr(r)}`, false);
+      await loadExternalSubs();
+      setMessage("Подписка удалена");
+    };
+  });
+}
+
+function renderExternalConfigsSelect() {
+  const select = $("externalSubConfigs");
+  select.innerHTML = "";
+
+  for (const sub of externalSubsCache) {
+    const group = document.createElement("optgroup");
+    group.label = sub.url;
+    for (const cfg of sub.configs) {
+      const opt = document.createElement("option");
+      opt.value = `${sub.id}:${cfg.index}`;
+      opt.textContent = cfg.remarks;
+      group.appendChild(opt);
+    }
+    select.appendChild(group);
+  }
+}
+
+async function loadExternalSubs() {
+  const r = await api("/admin/external-subs");
+  if (!r.ok) return setMessage(`Ошибка загрузки подписок: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  externalSubsCache = Array.isArray(j) ? j : [];
+  renderExternalSubsList();
+  renderExternalConfigsSelect();
+}
+
+async function loadClientExternalConfigs(id) {
+  const container = $("clientExternalConfigs");
+  const r = await api(`/admin/clients/${id}/external-configs`);
+  if (!r.ok) {
+    container.innerHTML = `<span class="err">Ошибка загрузки: ${escapeHtml(await safeErr(r))}</span>`;
+    return;
+  }
+
+  const j = await r.json();
+  const refs = Array.isArray(j.refs) ? j.refs : [];
+  if (!refs.length) {
+    container.innerHTML = "Пока не выбрано";
+    return;
+  }
+
+  container.innerHTML = refs
+    .map(
+      (ref, idx) => `
+      <div class="row" style="align-items: center; margin-top: 4px;">
+        <span style="flex: 1;">${escapeHtml(ref.remarks)}</span>
+        <span class="muted">${escapeHtml(ref.url)}</span>
+        <button type="button" class="danger client-ext-cfg-delete" data-idx="${idx}">Удалить</button>
+      </div>
+    `
+    )
+    .join("");
+
+  container.querySelectorAll(".client-ext-cfg-delete").forEach((btn) => {
+    btn.onclick = async () => {
+      const idx = Number(btn.getAttribute("data-idx"));
+      const refsAfter = refs.filter((_, i) => i !== idx);
+      const save = await api(`/admin/clients/${id}/external-configs`, {
+        method: "POST",
+        body: JSON.stringify({ refs: refsAfter })
+      });
+      if (!save.ok) return setMessage(`Ошибка удаления: ${await safeErr(save)}`, false);
+      await loadClientExternalConfigs(id);
+      setMessage("Конфиг удалён у клиента");
+    };
+  });
+}
+
+$("addExternalSub").onclick = async () => {
   const url = $("externalSubUrl").value.trim();
-  if (!url) return setMessage("Введите URL внешней подписки", false);
+  if (!url) return setMessage("Введите URL подписки", false);
 
-  const r = await api("/admin/parse-external-sub", {
+  const r = await api("/admin/external-subs", {
     method: "POST",
     body: JSON.stringify({ url })
   });
+  if (!r.ok) return setMessage(`Ошибка добавления: ${await safeErr(r)}`, false);
+
+  $("externalSubUrl").value = "";
+  await loadExternalSubs();
+  setMessage("Подписка добавлена и спарсена");
+};
+
+$("parseAllExternalSubs").onclick = async () => {
+  const r = await api("/admin/external-subs/parse-all", { method: "POST" });
   if (!r.ok) return setMessage(`Ошибка парсинга: ${await safeErr(r)}`, false);
 
   const j = await r.json();
-  parsedExternalConfigs = Array.isArray(j.configs) ? j.configs : [];
-
-  const select = $("externalSubConfigs");
-  select.innerHTML = "";
-  for (const cfg of parsedExternalConfigs) {
-    const opt = document.createElement("option");
-    opt.value = cfg.index;
-    opt.textContent = cfg.remarks;
-    select.appendChild(opt);
-  }
-
-  setMessage(`Спарсено конфигов: ${j.total}`);
+  const okCount = j.results.filter((x) => x.ok).length;
+  await loadExternalSubs();
+  setMessage(`Спарсено подписок: ${okCount} из ${j.results.length}`);
 };
 
 $("addExternalConfigsToClient").onclick = async () => {
@@ -542,30 +645,33 @@ $("addExternalConfigsToClient").onclick = async () => {
   if (!id) return setMessage("Выберите клиента", false);
 
   const select = $("externalSubConfigs");
-  const selectedIndices = Array.from(select.selectedOptions).map((o) => Number(o.value));
-  if (!selectedIndices.length) return setMessage("Выберите конфиги из списка", false);
+  const selected = Array.from(select.selectedOptions).map((o) => {
+    const [subId, index] = o.value.split(":");
+    return { subId, index: Number(index) };
+  });
+  if (!selected.length) return setMessage("Выберите конфиги из списка", false);
 
-  const configs = selectedIndices
-    .map((idx) => parsedExternalConfigs.find((c) => c.index === idx)?.config)
-    .filter(Boolean);
+  const rc = await api(`/admin/clients/${id}/external-configs`);
+  if (!rc.ok) return setMessage(`Ошибка загрузки клиента: ${await safeErr(rc)}`, false);
+  const current = await rc.json();
+  const currentRefs = Array.isArray(current.refs)
+    ? current.refs.map((r) => ({ subId: r.subId, index: r.index }))
+    : [];
 
-  if (!configs.length) return setMessage("Конфиги не найдены", false);
+  const merged = [...currentRefs];
+  for (const ref of selected) {
+    const exists = merged.some((r) => r.subId === ref.subId && r.index === ref.index);
+    if (!exists) merged.push(ref);
+  }
 
-  const r = await api(`/admin/clients/${id}/import-external-configs`, {
+  const r = await api(`/admin/clients/${id}/external-configs`, {
     method: "POST",
-    body: JSON.stringify({ configs })
+    body: JSON.stringify({ refs: merged })
   });
   if (!r.ok) return setMessage(`Ошибка добавления: ${await safeErr(r)}`, false);
 
-  const j = await r.json();
-  setMessage(`Добавлено конфигов клиенту: ${j.count}`);
-
-  const rc = await api(`/admin/clients/${id}`);
-  if (rc.ok) {
-    const c = await rc.json();
-    $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
-  }
-  await loadClients();
+  await loadClientExternalConfigs(id);
+  setMessage(`Добавлено конфигов клиенту: ${selected.length}`);
 };
 
 $("saveCustomJson").onclick = async () => {
@@ -605,6 +711,6 @@ $("deleteCustomJson").onclick = async () => {
 };
 
 // init
-Promise.all([loadClients(), loadAdminBroadcastSettings()]).catch((e) => {
+Promise.all([loadClients(), loadAdminBroadcastSettings(), loadExternalSubs()]).catch((e) => {
   setMessage(`Ошибка инициализации: ${e.message}`, false);
 });

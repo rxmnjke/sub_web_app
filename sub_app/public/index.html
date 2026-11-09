@@ -208,17 +208,25 @@
       <button id="previewMerged">Preview merged</button>
     </div>
 
-    <h4>Внешняя Happ подписка</h4>
-    <p class="muted">Ссылка на JSON подписку, защищённую заголовками Happ (например, sub.skippnet.com). После парсинга выберите конфиги и добавьте их выбранному клиенту.</p>
+    <h4>Внешние Happ подписки</h4>
+    <p class="muted">Добавьте одну или несколько ссылок. Нажмите «Парсинг всех», чтобы обновить конфиги. Конфиги сохраняются в базе и доступны для любого клиента.</p>
     <div class="row">
       <input id="externalSubUrl" class="w520" placeholder="https://sub.example.com/sub/..." />
-      <button id="parseExternalSub">Парсинг</button>
+      <button id="addExternalSub">Добавить подписку</button>
+    </div>
+    <div id="externalSubsList" style="margin-top: 10px;"></div>
+    <div class="row" style="margin-top: 10px;">
+      <button id="parseAllExternalSubs">Парсинг всех подписок</button>
     </div>
     <div class="row" style="margin-top: 10px;">
       <select id="externalSubConfigs" multiple class="w520" style="min-height: 120px;"></select>
     </div>
     <div class="row" style="margin-top: 10px;">
       <button id="addExternalConfigsToClient">Добавить выбранные конфиги клиенту</button>
+    </div>
+    <div style="margin-top: 10px;">
+      <h5>Выбранные конфиги клиента</h5>
+      <div id="clientExternalConfigs" class="muted">Пока не выбрано</div>
     </div>
 
     <h4>Custom JSON</h4>
@@ -242,6 +250,7 @@
           <th>Max devices</th>
           <th>Links</th>
           <th>SourceSubs</th>
+          <th>External</th>
           <th>Subscription URL</th>
         </tr>
       </thead>
