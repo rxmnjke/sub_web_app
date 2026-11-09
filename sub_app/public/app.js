@@ -510,6 +510,64 @@ $("previewMerged").onclick = async () => {
   );
 };
 
+let parsedExternalConfigs = [];
+
+$("parseExternalSub").onclick = async () => {
+  const url = $("externalSubUrl").value.trim();
+  if (!url) return setMessage("Введите URL внешней подписки", false);
+
+  const r = await api("/admin/parse-external-sub", {
+    method: "POST",
+    body: JSON.stringify({ url })
+  });
+  if (!r.ok) return setMessage(`Ошибка парсинга: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  parsedExternalConfigs = Array.isArray(j.configs) ? j.configs : [];
+
+  const select = $("externalSubConfigs");
+  select.innerHTML = "";
+  for (const cfg of parsedExternalConfigs) {
+    const opt = document.createElement("option");
+    opt.value = cfg.index;
+    opt.textContent = cfg.remarks;
+    select.appendChild(opt);
+  }
+
+  setMessage(`Спарсено конфигов: ${j.total}`);
+};
+
+$("addExternalConfigsToClient").onclick = async () => {
+  const id = clientSelect.value;
+  if (!id) return setMessage("Выберите клиента", false);
+
+  const select = $("externalSubConfigs");
+  const selectedIndices = Array.from(select.selectedOptions).map((o) => Number(o.value));
+  if (!selectedIndices.length) return setMessage("Выберите конфиги из списка", false);
+
+  const configs = selectedIndices
+    .map((idx) => parsedExternalConfigs.find((c) => c.index === idx)?.config)
+    .filter(Boolean);
+
+  if (!configs.length) return setMessage("Конфиги не найдены", false);
+
+  const r = await api(`/admin/clients/${id}/import-external-configs`, {
+    method: "POST",
+    body: JSON.stringify({ configs })
+  });
+  if (!r.ok) return setMessage(`Ошибка добавления: ${await safeErr(r)}`, false);
+
+  const j = await r.json();
+  setMessage(`Добавлено конфигов клиенту: ${j.count}`);
+
+  const rc = await api(`/admin/clients/${id}`);
+  if (rc.ok) {
+    const c = await rc.json();
+    $("customJson").value = c.customJson ? JSON.stringify(c.customJson, null, 2) : "";
+  }
+  await loadClients();
+};
+
 $("saveCustomJson").onclick = async () => {
   const id = clientSelect.value;
   if (!id) return setMessage("Выберите клиента", false);

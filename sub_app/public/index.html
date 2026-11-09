@@ -208,6 +208,19 @@
       <button id="previewMerged">Preview merged</button>
     </div>
 
+    <h4>Внешняя Happ подписка</h4>
+    <p class="muted">Ссылка на JSON подписку, защищённую заголовками Happ (например, sub.skippnet.com). После парсинга выберите конфиги и добавьте их выбранному клиенту.</p>
+    <div class="row">
+      <input id="externalSubUrl" class="w520" placeholder="https://sub.example.com/sub/..." />
+      <button id="parseExternalSub">Парсинг</button>
+    </div>
+    <div class="row" style="margin-top: 10px;">
+      <select id="externalSubConfigs" multiple class="w520" style="min-height: 120px;"></select>
+    </div>
+    <div class="row" style="margin-top: 10px;">
+      <button id="addExternalConfigsToClient">Добавить выбранные конфиги клиенту</button>
+    </div>
+
     <h4>Custom JSON</h4>
     <textarea id="customJson" placeholder='{"log":{"loglevel":"warning"},"outbounds":[],"routing":{"rules":[]}}'></textarea>
     <div class="row">

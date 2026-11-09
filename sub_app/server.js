@@ -701,6 +701,29 @@ async function fetchTextWithCache(url, timeoutMs = SUB_FETCH_TIMEOUT_MS) {
   }
 }
 
+async function fetchExternalHappSub(url, timeoutMs = SUB_FETCH_TIMEOUT_MS) {
+  const u = new URL(url);
+  if (!["http:", "https:"].includes(u.protocol)) throw new Error("Invalid protocol");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Happ",
+        "x-hwid": `admin-${crypto.randomUUID()}`
+      }
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text = await r.text();
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function collectLinksFromSubs(items = []) {
   const normalized = normalizeSourceSubs(items);
 
@@ -1070,6 +1093,48 @@ app.post("/admin/clients/:id/preview-merged-links", async (req, res) => {
     totalMergedApprox: manual.length + fetchedCount,
     fetchStats: fetched.stats
   });
+});
+
+app.post("/admin/parse-external-sub", async (req, res) => {
+  const url = String(req.body?.url || "").trim();
+  if (!url) return res.status(400).json({ error: "url is required" });
+
+  try {
+    new URL(url);
+  } catch {
+    return res.status(400).json({ error: "Invalid URL" });
+  }
+
+  try {
+    const configs = await fetchExternalHappSub(url);
+    const list = configs.map((cfg, index) => ({
+      index,
+      remarks: String(cfg?.remarks || `Config ${index + 1}`),
+      config: cfg
+    }));
+    res.json({ ok: true, total: list.length, configs: list });
+  } catch (e) {
+    res.status(502).json({ error: String(e?.message || e || "fetch failed") });
+  }
+});
+
+app.post("/admin/clients/:id/import-external-configs", (req, res) => {
+  const configs = req.body?.configs;
+  if (!Array.isArray(configs) || !configs.length) {
+    return res.status(400).json({ error: "configs must be a non-empty array" });
+  }
+
+  const db = readDb();
+  const client = db.clients.find((c) => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  client.customJson = configs.length === 1 ? configs[0] : configs;
+  client.links = [];
+  client.sourceSubs = [];
+  client.updatedAt = new Date().toISOString();
+
+  writeDb(db);
+  res.json({ ok: true, count: configs.length, mode: "customJson" });
 });
 
 app.post("/admin/clients/:id/max-devices", (req, res) => {
