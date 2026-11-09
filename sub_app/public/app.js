@@ -610,6 +610,7 @@ async function loadClientExternalConfigs(id) {
       });
       if (!save.ok) return setMessage(`Ошибка удаления: ${await safeErr(save)}`, false);
       await loadClientExternalConfigs(id);
+      await loadClients();
       setMessage("Конфиг удалён у клиента");
     };
   });
@@ -623,7 +624,12 @@ $("addExternalSub").onclick = async () => {
     method: "POST",
     body: JSON.stringify({ url })
   });
-  if (!r.ok) return setMessage(`Ошибка добавления: ${await safeErr(r)}`, false);
+  if (!r.ok) {
+    if (r.status === 409) {
+      return setMessage("Эта подписка уже добавлена. Используйте «Парсинг всех», чтобы обновить конфиги.", false);
+    }
+    return setMessage(`Ошибка добавления: ${await safeErr(r)}`, false);
+  }
 
   $("externalSubUrl").value = "";
   await loadExternalSubs();
@@ -640,7 +646,10 @@ $("parseAllExternalSubs").onclick = async () => {
   setMessage(`Спарсено подписок: ${okCount} из ${j.results.length}`);
 };
 
+let isAddingExternalConfigs = false;
+
 $("addExternalConfigsToClient").onclick = async () => {
+  if (isAddingExternalConfigs) return;
   const id = clientSelect.value;
   if (!id) return setMessage("Выберите клиента", false);
 
@@ -651,27 +660,33 @@ $("addExternalConfigsToClient").onclick = async () => {
   });
   if (!selected.length) return setMessage("Выберите конфиги из списка", false);
 
-  const rc = await api(`/admin/clients/${id}/external-configs`);
-  if (!rc.ok) return setMessage(`Ошибка загрузки клиента: ${await safeErr(rc)}`, false);
-  const current = await rc.json();
-  const currentRefs = Array.isArray(current.refs)
-    ? current.refs.map((r) => ({ subId: r.subId, index: r.index }))
-    : [];
+  isAddingExternalConfigs = true;
+  try {
+    const rc = await api(`/admin/clients/${id}/external-configs`);
+    if (!rc.ok) return setMessage(`Ошибка загрузки клиента: ${await safeErr(rc)}`, false);
+    const current = await rc.json();
+    const currentRefs = Array.isArray(current.refs)
+      ? current.refs.map((r) => ({ subId: r.subId, index: r.index }))
+      : [];
 
-  const merged = [...currentRefs];
-  for (const ref of selected) {
-    const exists = merged.some((r) => r.subId === ref.subId && r.index === ref.index);
-    if (!exists) merged.push(ref);
+    const merged = [...currentRefs];
+    for (const ref of selected) {
+      const exists = merged.some((r) => r.subId === ref.subId && r.index === ref.index);
+      if (!exists) merged.push(ref);
+    }
+
+    const r = await api(`/admin/clients/${id}/external-configs`, {
+      method: "POST",
+      body: JSON.stringify({ refs: merged })
+    });
+    if (!r.ok) return setMessage(`Ошибка добавления: ${await safeErr(r)}`, false);
+
+    await loadClientExternalConfigs(id);
+    await loadClients();
+    setMessage(`Добавлено конфигов клиенту: ${selected.length}`);
+  } finally {
+    isAddingExternalConfigs = false;
   }
-
-  const r = await api(`/admin/clients/${id}/external-configs`, {
-    method: "POST",
-    body: JSON.stringify({ refs: merged })
-  });
-  if (!r.ok) return setMessage(`Ошибка добавления: ${await safeErr(r)}`, false);
-
-  await loadClientExternalConfigs(id);
-  setMessage(`Добавлено конфигов клиенту: ${selected.length}`);
 };
 
 $("saveCustomJson").onclick = async () => {

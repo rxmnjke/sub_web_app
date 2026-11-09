@@ -367,9 +367,16 @@ function normalizeExternalSub(sub = {}) {
 
 function normalizeExternalConfigRefs(refs = []) {
   const items = Array.isArray(refs) ? refs : [];
+  const seen = new Set();
   return items
     .filter((r) => r && r.subId && Number.isInteger(r.index) && r.index >= 0)
-    .map((r) => ({ subId: String(r.subId), index: Number(r.index) }));
+    .map((r) => ({ subId: String(r.subId), index: Number(r.index) }))
+    .filter((r) => {
+      const key = `${r.subId}:${r.index}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function normalizeClient(rawClient = {}) {
@@ -1140,6 +1147,11 @@ app.post("/admin/external-subs", async (req, res) => {
   try {
     const configs = await fetchExternalHappSub(url);
     const db = readDb();
+    const existing = db.externalSubs.find((s) => s.url === url);
+    if (existing) {
+      return res.status(409).json({ error: "Subscription URL already exists" });
+    }
+
     const sub = {
       id: crypto.randomUUID(),
       url,
