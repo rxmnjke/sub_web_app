@@ -740,6 +740,19 @@ async function collectLinksFromSubs(items = []) {
   return { grouped, stats };
 }
 
+function transportPriority(network) {
+  switch (network) {
+    case "tcp":
+      return 0;
+    case "grpc":
+      return 1;
+    case "xhttp":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
 function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}) {
   const template = deepClone(loadJsonTemplate());
   if (opts?.client) {
@@ -770,6 +783,13 @@ function buildSubscriptionFromCountryGroups(grouped, manualLinks = [], opts = {}
   }
 
   for (const link of manualLinks) pushParsed(link);
+
+  // enforce strict outbound order: tcp -> grpc -> xhttp (missing transports are skipped)
+  parsed.sort(
+    (a, b) =>
+      transportPriority(a.streamSettings?.network) -
+      transportPriority(b.streamSettings?.network)
+  );
 
   const staticOutbounds = Array.isArray(template.outbounds)
     ? template.outbounds.filter((o) => !String(o?.tag || "").startsWith("vless-"))
