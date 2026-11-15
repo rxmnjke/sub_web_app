@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "fs";
+import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -85,6 +86,52 @@ test("rename rejects duplicate names and accepts unique rename", async () => {
   });
   assert.equal(goodRename.res.status, 200, `rename should succeed: ${JSON.stringify(goodRename.json)}`);
   assert.equal(goodRename.json.name, "Charlie");
+});
+
+test("subscription returns available source configs when another source times out", async () => {
+  const upstream = http.createServer((req, res) => {
+    if (req.url === "/working") {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("vless://4ec4d10d-f31a-41e5-bb9f-1a32f9f1e0f1@example.com:443?type=tcp&security=none");
+      return;
+    }
+
+    res.writeHead(200, { "Content-Type": "text/plain" });
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const { port } = upstream.address();
+  const client = await makeRequest("/admin/clients", {
+    method: "POST",
+    body: JSON.stringify({ name: "Partial source response" })
+  });
+  assert.equal(client.res.status, 200);
+
+  const sourceSubs = await makeRequest(`/admin/clients/${client.json.id}/source-subs`, {
+    method: "POST",
+    body: JSON.stringify({
+      items: [
+        { url: `http://127.0.0.1:${port}/working`, country: "germany" },
+        { url: `http://127.0.0.1:${port}/unresponsive`, country: "denmark" }
+      ],
+      replace: true
+    })
+  });
+  assert.equal(sourceSubs.res.status, 200);
+
+  const startedAt = Date.now();
+  try {
+    const subscription = await makeRequest(`/sub/${client.json.token}`);
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(subscription.res.status, 200);
+    assert.ok(elapsedMs < 7000, `subscription waited ${elapsedMs}ms for an unresponsive source`);
+    assert.ok(Array.isArray(subscription.json));
+    assert.equal(subscription.json.length, 1, "the failed source must not produce a config");
+    assert.equal(subscription.json[0].remarks, "🇩🇪 Германия");
+  } finally {
+    upstream.closeAllConnections();
+    await new Promise((resolve) => upstream.close(resolve));
+  }
 });
 
 test("client with ad blocking adds geosite rule into generated config", () => {

@@ -7,6 +7,7 @@ services:
       - PORT=8080
       - ADMIN_UI_PATH=${ADMIN_UI_PATH:-/admin-panel}
       - MAX_CLIENT_XRAY_RULES=${MAX_CLIENT_XRAY_RULES:-20}
+      - SOURCE_SUB_FETCH_TIMEOUT_MS=${SOURCE_SUB_FETCH_TIMEOUT_MS:-4000}
     volumes:
       - ./sub_app/data:/app/data
     networks:

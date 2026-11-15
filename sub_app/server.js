@@ -21,6 +21,7 @@ const GEOSITE_FILE = path.join(GEO_FILES_DIR, "geosite.dat");
 const DATA_FILE = path.join(DATA_DIR, "clients.json");
 const JSON_TEMPLATE_FILE = path.join(__dirname, "json_template.json");
 const SUB_FETCH_TIMEOUT_MS = Number(process.env.SUB_FETCH_TIMEOUT_MS || 8000);
+const SOURCE_SUB_FETCH_TIMEOUT_MS = Number(process.env.SOURCE_SUB_FETCH_TIMEOUT_MS || 4000);
 const SUB_CACHE_TTL_MS = Number(process.env.SUB_CACHE_TTL_MS || 120000); // 120 sec
 const SUB_UPDATE_INTERVAL_HOURS = Number(process.env.SUB_UPDATE_INTERVAL_HOURS || 2);
 const HWID_ENFORCE = String(process.env.HWID_ENFORCE || "true").toLowerCase() === "true";
@@ -711,7 +712,7 @@ function ensureClientDevices(client) {
   return client.devices;
 }
 
-async function fetchTextWithCache(url, timeoutMs = SUB_FETCH_TIMEOUT_MS) {
+async function fetchTextWithCache(url, timeoutMs = SOURCE_SUB_FETCH_TIMEOUT_MS) {
   const now = Date.now();
   const hit = subCache.get(url);
   if (hit && hit.expiresAt > now) return hit.text;
